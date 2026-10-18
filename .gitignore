@@ -1,0 +1,18 @@
+# Terraform working files, state, plans, and local secrets.
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.env
+.env.*
+__pycache__/
+# Commit .terraform.lock.hcl when providers are added.
+**/.idea/*
