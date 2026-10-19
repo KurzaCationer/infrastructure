@@ -1,5 +1,8 @@
 # Packer trust anchors
 
+For repository setup and image builds, start with the
+[root README](../../../../README.md#setup). This file covers signing-key maintenance.
+
 These public keys are vendored so image builds do not silently trust a key
 fetched during the build. They were refreshed and verified on 2026-08-08.
 
@@ -15,7 +18,12 @@ fetched during the build. They were refreshed and verified on 2026-08-08.
 2. Download the key from the authoritative HTTPS endpoint and inspect it with
    `gpg --show-keys --with-colons`.
 3. Review the complete primary fingerprint, lifecycle, signing capability, and
-   file SHA-256. Update the Packer fingerprint pin and this table together.
-4. Run `scripts/tests/test_packer_trust_anchors.sh` and
-   `scripts/tests/test_leapmicro_verifier.sh`, then complete a real snapshot
-   build and boot test before release.
+   file SHA-256. Update the fingerprint pins in both Packer templates, this table,
+   and all changed-file hashes in `../security-bundle.sha256` together. Keep the
+   reviewed bundle aligned with the pinned Kube-Hetzner release.
+4. From `terraform/cluster/hcloud-init`, run
+   `sha256sum --check security-bundle.sha256`, then complete a real snapshot build
+   and boot test before using the rotated bundle for a cluster. The upstream
+   `scripts/tests/test_packer_trust_anchors.sh` and
+   `scripts/tests/test_leapmicro_verifier.sh` tests are not vendored here; run them
+   in the corresponding upstream checkout when reviewing a bundle update.

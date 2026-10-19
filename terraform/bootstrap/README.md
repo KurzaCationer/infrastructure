@@ -1,0 +1,41 @@
+# Platform bootstrap
+
+Use the [root README](../../README.md) for the complete
+[setup sequence](../../README.md#setup),
+[verification and first login](../../README.md#verify-and-access-the-deployment),
+[credential rotation](../../README.md#security-and-ownership) and
+[local Terraform runs](../../README.md#local-terraform-runs).
+
+This layer reads the cluster kubeconfig from S3 and installs Helm releases in
+dependency order:
+
+1. Bitwarden Secrets Manager operator in `sm-operator-system`.
+2. The local `tailscale-credentials` chart, creating a `BitwardenSecret` mapping.
+3. Tailscale operator in `tailscale`, mounting the synchronized `operator-oauth` Secret.
+4. Argo CD in `argocd`, including the ingress ProxyGroup and private Ingress.
+
+| File | Purpose |
+| --- | --- |
+| [`main.tf`](main.tf) | Remote state, providers, write-only Bitwarden auth Secret, releases and dependency order |
+| [`variables.tf`](variables.tf) | Bucket, tailnet, Bitwarden endpoint and secret-UUID inputs |
+| [`outputs.tf`](outputs.tf) | Private Argo CD URL |
+| [`values/argocd.yaml`](values/argocd.yaml) | Argo CD settings, `argocd-ingress` ProxyGroup and Tailscale Ingress |
+| [`charts/tailscale-credentials/`](charts/tailscale-credentials/) | Maps only the operator OAuth secrets to `tailscale/operator-oauth` |
+
+Terraform owns the `tailscale` namespace and `tailscale/bitwarden-auth` Secret.
+The BWS token enters through the sensitive, ephemeral
+`bitwarden_operator_access_token` variable and is written using `data_wo`, so it
+is omitted from saved plans and state. CI supplies it during both plan and apply,
+including destroy runs. Helm never receives the token or Tailscale credentials.
+Increment `bitwarden_operator_access_token_revision` when rotating the token;
+CI reads that revision from `BWS_OPERATOR_ACCESS_TOKEN_REVISION` (default `1`).
+
+Terraform owns these releases and their resources. Future GitOps manifests
+belong under the root `argocd/` path; there are none committed yet. Avoid assigning
+the same resources to Argo CD without an explicit ownership migration.
+
+Argo CD uses Tailscale Service `svc:argocd` at
+`https://argocd.<your-tailnet>.ts.net`. Its Service remains `ClusterIP`; HTTPS
+terminates on the proxy. The root guide includes the required tailnet policy,
+separate operator OAuth client and Bitwarden accounts. A successful Helm release
+alone does not verify that private access is working.
