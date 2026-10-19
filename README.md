@@ -495,6 +495,26 @@ Removing the operator Application cascades to its chart resources, including
 CRDs; deleting those CRDs also deletes their custom resources. Retire database
 clusters deliberately before removing the operator.
 
+### Quad assignment
+
+The `quad-assignment` child Application watches
+`deploy/overlays/production` on `main` in
+[`KurzaCationer/quad-assignment`](https://github.com/KurzaCationer/quad-assignment).
+That repository owns the frontend/backend Deployments, database, labelled
+Namespace and HTTPRoute for `quad.dylannas.nl`. Its CI opens deployment pull
+requests; Argo CD reconciles the image references after those PRs are merged.
+
+The Application enables self-healing and server-side apply. Automatic pruning
+is disabled and the Application has no cascading-deletion finalizer to protect
+the database. Retired resources require deliberate manual removal.
+The assignment repository must provide the production overlay and namespace,
+and CloudNativePG must be healthy before the first deployment. Configure Argo CD
+read credentials if the assignment repository is private. Until the overlay is
+available on `main`, Argo CD will report a source/rendering error.
+
+Platform validation checks this Application's source and destination locally;
+the assignment repository's CI validates the external Kustomize overlay.
+
 ### Application ingress
 
 The Terraform-seeded root Application loads the child Applications under

@@ -39,13 +39,32 @@ seed = yaml.safe_load(seed.replace("${organization_id}", "00000000-0000-0000-000
 require(seed["spec"]["source"]["path"] == "argocd", "Root must watch argocd/")
 apps = build(root / "argocd", seed["spec"]["source"]["kustomize"]["patches"])
 require({app["metadata"]["name"] for app in apps} == {
-    "public-ingress", "external-dns", "https-test", "cloudnative-pg",
+    "public-ingress", "external-dns", "https-test", "cloudnative-pg", "quad-assignment",
 }, "Unexpected child apps, or duplicate cert-manager installation")
+quad = next(app for app in apps if app["metadata"]["name"] == "quad-assignment")
+require(quad["spec"]["source"] == {
+    "repoURL": "https://github.com/KurzaCationer/quad-assignment.git",
+    "targetRevision": "main",
+    "path": "deploy/overlays/production",
+}, "Quad must deploy the production overlay from its own repository's main branch")
+require(quad["spec"]["destination"] == {
+    "server": "https://kubernetes.default.svc", "namespace": "quad-assignment",
+}, "Quad must target its own namespace on this cluster")
+require(quad["spec"]["syncPolicy"]["automated"] == {"prune": False, "selfHeal": True},
+        "Quad must self-heal without automatically pruning database resources")
+require("ServerSideApply=true" in quad["spec"]["syncPolicy"]["syncOptions"],
+        "Quad must use server-side apply")
+require(not quad["metadata"].get("finalizers"), "Deleting Quad's Application must not cascade to its database")
 objects = []
 for app in apps:
     spec = app["spec"]
     if "source" in spec:
         source = spec["source"]
+        # The external assignment overlay is validated in its own repository's CI.
+        if app["metadata"]["name"] == "quad-assignment":
+            continue
+        require(source["repoURL"] == seed["spec"]["source"]["repoURL"],
+                "Local manifest validation requires an infrastructure repository source")
         objects += build(root / source["path"], source.get("kustomize", {}).get("patches"))
 
 mappings = [obj for obj in objects if obj["kind"] == "BitwardenSecret"]

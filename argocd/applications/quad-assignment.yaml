@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: quad-assignment
+  namespace: argocd
+  # No cascading-deletion finalizer: removing this Application must not delete its database.
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: quad-assignment
+  syncPolicy:
+    automated:
+      # Database and namespace removal require a deliberate manual action.
+      prune: false
+      selfHeal: true
+    syncOptions:
+    - ServerSideApply=true
+    - SkipDryRunOnMissingResource=true
+  source:
+    repoURL: https://github.com/KurzaCationer/quad-assignment.git
+    targetRevision: main
+    path: deploy/overlays/production
