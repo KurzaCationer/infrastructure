@@ -1,6 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - applications/cloudnative-pg.yaml
   - applications/public-ingress.yaml
   - applications/external-dns.yaml
   - applications/https-test.yaml

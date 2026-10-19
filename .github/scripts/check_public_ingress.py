@@ -1,4 +1,4 @@
-"""Validate the app-of-apps patches, public routing, and rendered ExternalDNS chart."""
+"""Validate the app-of-apps, public routing, and rendered platform charts."""
 
 import argparse
 from os.path import relpath
@@ -11,6 +11,7 @@ import yaml
 root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--external-dns-chart", help="Downloaded chart for offline validation")
+parser.add_argument("--cloudnative-pg-chart", help="Downloaded chart for offline validation")
 args = parser.parse_args()
 
 
@@ -38,7 +39,7 @@ seed = yaml.safe_load(seed.replace("${organization_id}", "00000000-0000-0000-000
 require(seed["spec"]["source"]["path"] == "argocd", "Root must watch argocd/")
 apps = build(root / "argocd", seed["spec"]["source"]["kustomize"]["patches"])
 require({app["metadata"]["name"] for app in apps} == {
-    "public-ingress", "external-dns", "https-test",
+    "public-ingress", "external-dns", "https-test", "cloudnative-pg",
 }, "Unexpected child apps, or duplicate cert-manager installation")
 objects = []
 for app in apps:
@@ -96,4 +97,27 @@ require([flag for flag in flags if flag.startswith("--source=")] == ["--source=g
 require(next(env for env in container["env"] if env["name"] == "CF_API_TOKEN")["valueFrom"] == {
     "secretKeyRef": {"name": "cloudflare-api-token", "key": "api-token"},
 }, "ExternalDNS must read its token from BWS")
-print("App-of-apps, BWS references, wildcard TLS and public DNS checks passed.")
+app = next(app for app in apps if app["metadata"]["name"] == "cloudnative-pg")
+require(app["spec"]["destination"]["namespace"] == "cnpg-system", "CNPG must use its own namespace")
+require({"CreateNamespace=true", "ServerSideApply=true"}.issubset(app["spec"]["syncPolicy"]["syncOptions"]),
+        "CNPG requires namespace creation and server-side apply for its CRDs")
+source = app["spec"]["sources"][0]
+chart_args = [args.cloudnative_pg_chart] if args.cloudnative_pg_chart else [
+    source["chart"], "--repo", source["repoURL"], "--version", source["targetRevision"],
+]
+rendered = subprocess.check_output([
+    "helm", "template", "cloudnative-pg", *chart_args, "--namespace", "cnpg-system",
+    "--values", str(root / "argocd/values/cloudnative-pg.yaml"),
+], text=True)
+cnpg = [obj for obj in yaml.safe_load_all(rendered) if obj]
+require(any(obj["kind"] == "CustomResourceDefinition" and
+            obj["metadata"]["name"] == "clusters.postgresql.cnpg.io" for obj in cnpg),
+        "CNPG must install its database cluster CRD")
+operator = next(obj for obj in cnpg if obj["kind"] == "Deployment")
+require(operator["spec"]["replicas"] == 1, "Use one CNPG operator replica on this single-node cluster")
+require(any(obj["kind"] == "ClusterRoleBinding" for obj in cnpg), "CNPG requires cluster-wide RBAC")
+require(all(obj["spec"].get("type", "ClusterIP") == "ClusterIP" for obj in cnpg if obj["kind"] == "Service"),
+        "CNPG Services must remain internal")
+require(not any(obj["kind"] in {"Cluster", "Database", "Ingress", "HTTPRoute", "ServiceMonitor", "PodMonitor"}
+                for obj in cnpg), "Install only the operator, without databases, public routes or monitoring dependencies")
+print("App-of-apps, BWS references, wildcard TLS, public DNS and CloudNativePG checks passed.")

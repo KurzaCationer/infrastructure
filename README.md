@@ -39,15 +39,16 @@ Tailscale's source validation settings do not break Cilium's transparent proxy.
 The Terraform `bootstrap` layer reads the cluster kubeconfig from S3 and installs
 Bitwarden Secrets Manager operator chart **2.0.3**, a `BitwardenSecret` mapping,
 Tailscale operator **1.104.1**, then Argo CD chart **10.10.5**. Argo CD deploys
-ExternalDNS, wildcard certificates, a shared public Gateway and the test
-application at `test.kurza.nl` from `argocd/`. cert-manager is already installed
+the CloudNativePG operator, ExternalDNS, wildcard certificates, a shared public
+Gateway and the test application at `test.kurza.nl` from `argocd/`. cert-manager is already installed
 by Kube-Hetzner (enabled by default).
 Terraform owns the bootstrap releases, including the ProxyGroup and ingress in
 [`terraform/bootstrap/values/argocd.yaml`](terraform/bootstrap/values/argocd.yaml).
 Bootstrap seeds only the root `infrastructure` Argo CD Application, which watches
 `argocd/` and creates its child Applications. It supplies the non-secret
 Bitwarden organization UUID and public origin IP. Existing operators stay under
-their current owners; Argo CD manages the new public application resources.
+their current owners; Argo CD manages CloudNativePG and the public application
+resources.
 Bootstrap Helm values belong in `terraform/bootstrap/values/`.
 
 Argo CD is available at `https://argocd.<your-tailnet>.ts.net` as Tailscale Service
@@ -472,6 +473,27 @@ during replacement or maintenance.
 
 Argo CD automatically reconciles the public platform from the repository default
 branch. Terraform retains ownership of its existing bootstrap releases.
+
+### PostgreSQL operator
+
+Argo CD installs the [CloudNativePG operator](https://cloudnative-pg.io/charts/)
+from the official Helm repository using chart **0.29.1** (operator **1.30.1**).
+The `cloudnative-pg` child Application creates `cnpg-system`, installs the CRDs
+with server-side apply, and runs one operator replica with cluster-wide scope.
+Its values are in `argocd/values/cloudnative-pg.yaml`; Terraform bootstrap does
+not install or own this operator.
+
+After this change reaches `main`, the root Application discovers it automatically.
+Verify with `kubectl -n argocd get application cloudnative-pg`,
+`kubectl -n cnpg-system rollout status deployment/cloudnative-pg --timeout=180s`
+and `kubectl get crd clusters.postgresql.cnpg.io`.
+
+This installs the operator only. Application databases require separate
+CloudNativePG `Cluster` resources with storage, credentials and backup settings.
+Wait for the operator to be healthy before syncing the first database.
+Removing the operator Application cascades to its chart resources, including
+CRDs; deleting those CRDs also deletes their custom resources. Retire database
+clusters deliberately before removing the operator.
 
 ### Application ingress
 
