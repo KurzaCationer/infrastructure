@@ -128,11 +128,20 @@ resource "helm_release" "argocd" {
   chart            = "argo-cd"
   version          = "10.10.5"
   atomic           = true
-  timeout          = 600
+  timeout          = 900
 
   values = [
     file("${path.module}/values/argocd.yaml"),
     yamlencode({
+      extraObjects = concat(
+        yamldecode(file("${path.module}/values/argocd.yaml")).extraObjects,
+        [
+          yamldecode(templatefile("${path.module}/values/root-application.yaml.tftpl", {
+            organization_id = var.bitwarden_organization_id
+            public_ipv4     = data.terraform_remote_state.cluster.outputs.public_ingress_ipv4
+          })),
+        ],
+      )
       configs = {
         cm = {
           url = local.argocd_url

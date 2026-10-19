@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: https-test
+  labels:
+    infrastructure.kurza.nl/public-ingress: 'true'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: https-test
+  namespace: https-test
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kurza HTTPS test</title>
+    <style>body{font:18px system-ui;max-width:44rem;margin:15vh auto;padding:2rem;background:#101828;color:#ecf2ff}h1{color:#8ceac1}code{color:#a9caff}</style>
+    <h1>Kurza HTTPS test</h1>
+    <p>This test application is running at <code>test.kurza.nl</code>.</p>
+    <p>Traffic passes through Cloudflare to the cluster's HTTPS gateway.</p>
+    <p>The origin certificate is issued and renewed by cert-manager using Let's Encrypt.</p>
+    </html>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: https-test
+  namespace: https-test
+spec:
+  type: ClusterIP
+  selector:
+    app: https-test
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: https-test
+  namespace: https-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: https-test
+  template:
+    metadata:
+      labels:
+        app: https-test
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: nginx
+        image: nginxinc/nginx-unprivileged:1.30.6-alpine
+        ports:
+        - name: http
+          containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 64Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+        volumeMounts:
+        - name: page
+          mountPath: /usr/share/nginx/html
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: page
+        configMap:
+          name: https-test
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-test
+  namespace: https-test
+  labels:
+    infrastructure.kurza.nl/public-dns: 'true'
+spec:
+  parentRefs:
+  - name: public
+    namespace: public-ingress
+    sectionName: kurza-nl-https
+  hostnames:
+  - test.kurza.nl
+  rules:
+  - backendRefs:
+    - name: https-test
+      port: 80

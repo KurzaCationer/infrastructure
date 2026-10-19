@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  source:
+    repoURL: https://github.com/KurzaCationer/infrastructure.git
+    targetRevision: main
+    path: argocd
+    kustomize:
+      # Inject only values discovered by Terraform. Child apps and workloads
+      # remain owned by Git; no credential values pass through these patches.
+      patches:
+        - target:
+            kind: Application
+            name: public-ingress
+          patch: |
+            - op: add
+              path: /spec/source/kustomize
+              value:
+                patches:
+                  - target:
+                      kind: BitwardenSecret
+                    patch: |
+                      - op: replace
+                        path: /spec/organizationId
+                        value: ${organization_id}
+                  - target:
+                      kind: Gateway
+                      name: public
+                    patch: |
+                      - op: replace
+                        path: /metadata/annotations/external-dns.kubernetes.io~1target
+                        value: ${public_ipv4}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

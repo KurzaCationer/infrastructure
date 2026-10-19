@@ -36,11 +36,16 @@ Nodes retain public addresses for outbound bootstrap and Tailscale connectivity.
 
 The Terraform `bootstrap` layer reads the cluster kubeconfig from S3 and installs
 Bitwarden Secrets Manager operator chart **2.0.3**, a `BitwardenSecret` mapping,
-Tailscale operator **1.104.1**, then Argo CD chart **10.10.5**.
-Terraform owns these releases, including the ProxyGroup and ingress in
+Tailscale operator **1.104.1**, then Argo CD chart **10.10.5**. Argo CD deploys
+ExternalDNS, wildcard certificates, a shared public Gateway and the test
+application at `test.kurza.nl` from `argocd/`. cert-manager is already installed
+by Kube-Hetzner (enabled by default).
+Terraform owns the bootstrap releases, including the ProxyGroup and ingress in
 [`terraform/bootstrap/values/argocd.yaml`](terraform/bootstrap/values/argocd.yaml).
-Future GitOps Applications and AppProjects belong under `argocd/`; none are
-committed or loaded from that path yet. There is no self-managing Application.
+Bootstrap seeds only the root `infrastructure` Argo CD Application, which watches
+`argocd/` and creates its child Applications. It supplies the non-secret
+Bitwarden organization UUID and public origin IP. Existing operators stay under
+their current owners; Argo CD manages the new public application resources.
 Bootstrap Helm values belong in `terraform/bootstrap/values/`.
 
 Argo CD is available at `https://argocd.<your-tailnet>.ts.net` as Tailscale Service
@@ -58,7 +63,7 @@ on the deployed Cilium network path.
 | [`terraform/cluster/hcloud-init/`](terraform/cluster/hcloud-init/) | Separate Packer snapshot builds and vendored security bundle |
 | [`terraform/bootstrap/`](terraform/bootstrap/) | Bitwarden and Tailscale operators, OAuth secret mapping and Argo CD; state key `bootstrap/terraform.tfstate` |
 | [`terraform/bootstrap/values/argocd.yaml`](terraform/bootstrap/values/argocd.yaml) | Terraform-owned Argo CD settings, ingress ProxyGroup and private Ingress |
-| `argocd/` | Empty local placeholder for future GitOps manifests; no Applications are committed and nothing currently watches this path |
+| `argocd/` | Argo CD Application, AppProject, public platform chart and controller values |
 | [`scripts/`](scripts/) | Local cluster checks and admin kubeconfig retrieval for Bash and Windows |
 | [`.github/workflows/`](.github/workflows/) | Validation, manual image builds, apply and destroy workflows |
 | [`.github/scripts/`](.github/scripts/) | Enrollment-key lifecycle, Argo CD manifest checks and helper tests |
@@ -463,22 +468,58 @@ Automatic OS and Kubernetes upgrades are disabled. Refresh snapshots deliberatel
 and plan node replacement separately; this single-node cluster has no redundancy
 during replacement or maintenance.
 
-Future GitOps Applications and AppProjects belong under `argocd/`, but you must
-explicitly configure Argo CD to load them. Terraform owns the bootstrap releases;
-move ownership explicitly before allowing Argo CD to manage the same resources.
+Argo CD automatically reconciles the public platform from the repository default
+branch. Terraform retains ownership of its existing bootstrap releases.
 
 ### Application ingress
 
-The module installs Cilium's Gateway API controller and the standard Gateway API
-CRDs. Application manifests can define a `Gateway` with `gatewayClassName: cilium`
-and attach `HTTPRoute` resources. No Gateway, domain, certificate, or application
-route is created yet. This follows the module's
-[Cilium Gateway API example](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/tree/v3.2.1/examples/cilium-gateway-api).
+The Terraform-seeded root Application loads the child Applications under
+`argocd/`. They configure the existing cert-manager with Let's Encrypt DNS-01
+for `*.dylannas.nl` and `*.kurza.nl`, install ExternalDNS, and deploy
+`test.kurza.nl`. Cloudflare proxies traffic to Cilium on the existing node IP;
+public ports 80/443 accept only Cloudflare's published IPv4/IPv6 ranges.
 
-By default, a Cilium Gateway creates a `LoadBalancer` Service, which Hetzner CCM
-backs with a billable external load balancer. The controller itself does not
-create one until a Gateway is configured. The module's single-node setup also
-enables k3s ServiceLB; choose the exposure configuration when adding your Gateway.
+Setup:
+
+1. Give the Cloudflare token **Zone / DNS / Edit** and **Zone / Zone / Read** for
+   only these two zones. Its Bitwarden UUID is in
+   `argocd/platform/ingress/cloudflare-credentials.yaml`. Grant the existing BWS
+   operator machine account read access. Set both Cloudflare zones to **Full
+   (strict)** with Universal SSL enabled; resolve any existing `test.kurza.nl`
+   DNS conflict and ensure CAA records, if present, permit `letsencrypt.org`.
+2. Merge and run **Terraform Apply** once to configure the firewall/Cilium and
+   root Application. Argo CD then reconciles `argocd/` automatically. If the
+   repository is private, first configure its read-only credentials in Argo CD.
+3. BWS authentication references are namespace-local. Copy the existing operator
+   auth Secret once into the two consumer namespaces (repeat after machine-token
+   rotation); the Cloudflare token itself remains managed by BWS:
+
+   ```sh
+   kubectl create namespace external-dns --dry-run=client -o yaml | kubectl apply -f -
+   for ns in cert-manager external-dns; do
+     kubectl -n tailscale get secret bitwarden-auth -o json |
+       jq --arg ns "$ns" '{apiVersion,kind,metadata:{name:"bitwarden-auth",namespace:$ns},type,data}' |
+       kubectl apply -f -
+   done
+   ```
+
+Verify `kubectl -n argocd get applications`, wait for both certificates to be
+Ready in `public-ingress`, then open `https://test.kurza.nl`. Direct access must
+fail from outside the tailnet, even with the correct hostname:
+
+```sh
+ORIGIN_IP=$(terraform -chdir=terraform/cluster output -raw public_ingress_ipv4)
+curl --connect-timeout 5 --max-time 10 --resolve "test.kurza.nl:443:$ORIGIN_IP" https://test.kurza.nl
+```
+
+The ACME email is `mail@kurza.nl`; TLS/ACME keys stay in Kubernetes. The browser
+shows Cloudflare's edge certificate; Full (strict) validates the Let's Encrypt
+origin certificate. Add future apps using the test manifests as an example,
+reusing the shared Gateway and its namespace/route opt-in labels. Removing the
+`https-test` Application from `argocd/kustomization.yaml` removes the example.
+ExternalDNS retains DNS records on removal (`upsert-only`); remove retired names
+and their ownership TXT records manually. Review Cloudflare IP ranges in
+`terraform/cluster/cloudflare.tf` when [Cloudflare updates them](https://www.cloudflare.com/ips/).
 
 ### Destroy
 
@@ -577,6 +618,7 @@ To reproduce the Argo CD private-exposure check, install Helm and Python package
 
 ```sh
 python3 .github/scripts/check_argocd.py
+python3 .github/scripts/check_public_ingress.py
 ```
 
 The check renders the pinned chart and rejects public Services, host ports and
@@ -591,7 +633,8 @@ sha256sum --check security-bundle.sha256
 
 ## Security and ownership
 
-Terraform manages `tailscale/bitwarden-auth` using `kubernetes_secret_v1.data_wo`.
+Terraform manages `bitwarden-auth` in `tailscale`, `cert-manager` and
+`external-dns` using `kubernetes_secret_v1.data_wo`.
 Its token comes from a sensitive, ephemeral input and is omitted from saved plans
 and state. This initial machine token lets the Bitwarden operator log in and
 bootstrap secret synchronization. It is never supplied to Helm.

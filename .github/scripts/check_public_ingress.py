@@ -1,0 +1,99 @@
+"""Validate the app-of-apps patches, public routing, and rendered ExternalDNS chart."""
+
+import argparse
+from os.path import relpath
+from pathlib import Path
+import subprocess
+import tempfile
+
+import yaml
+
+root = Path(__file__).resolve().parents[2]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--external-dns-chart", help="Downloaded chart for offline validation")
+args = parser.parse_args()
+
+
+def require(condition, message):
+    if not condition:
+        raise SystemExit(message)
+
+
+def build(path, patches=None):
+    with tempfile.TemporaryDirectory() as directory:
+        overlay = Path(directory) / "kustomization.yaml"
+        overlay.write_text(yaml.safe_dump({
+            "apiVersion": "kustomize.config.k8s.io/v1beta1", "kind": "Kustomization",
+            "resources": [Path(relpath(path, directory)).as_posix()], "patches": patches or [],
+        }))
+        rendered = subprocess.check_output([
+            "kubectl", "kustomize", directory, "--load-restrictor=LoadRestrictionsNone",
+        ], text=True)
+    return [obj for obj in yaml.safe_load_all(rendered) if obj]
+
+
+seed = (root / "terraform/bootstrap/values/root-application.yaml.tftpl").read_text()
+seed = yaml.safe_load(seed.replace("${organization_id}", "00000000-0000-0000-0000-000000000001")
+                      .replace("${public_ipv4}", "192.0.2.10"))
+require(seed["spec"]["source"]["path"] == "argocd", "Root must watch argocd/")
+apps = build(root / "argocd", seed["spec"]["source"]["kustomize"]["patches"])
+require({app["metadata"]["name"] for app in apps} == {
+    "public-ingress", "external-dns", "https-test",
+}, "Unexpected child apps, or duplicate cert-manager installation")
+objects = []
+for app in apps:
+    spec = app["spec"]
+    if "source" in spec:
+        source = spec["source"]
+        objects += build(root / source["path"], source.get("kustomize", {}).get("patches"))
+
+mappings = [obj for obj in objects if obj["kind"] == "BitwardenSecret"]
+require({obj["metadata"]["namespace"] for obj in mappings} == {"cert-manager", "external-dns"},
+        "Cloudflare credentials must be namespace-local")
+for obj in mappings:
+    require(obj["spec"]["organizationId"] == "00000000-0000-0000-0000-000000000001",
+            "Root did not propagate the organization UUID")
+    require(obj["spec"]["onlyMappedSecrets"] is True, "BWS must sync only the Cloudflare token")
+    require(obj["spec"]["authToken"] == {"secretName": "bitwarden-auth", "secretKey": "token"},
+            "BWS must reuse the existing operator credentials")
+certs = [obj for obj in objects if obj["kind"] == "Certificate"]
+require({name for cert in certs for name in cert["spec"]["dnsNames"]} == {
+    "*.dylannas.nl", "*.kurza.nl",
+}, "Incorrect wildcard coverage")
+gateway = next(obj for obj in objects if obj["kind"] == "Gateway")
+require(gateway["metadata"]["annotations"]["external-dns.kubernetes.io/target"] == "192.0.2.10",
+        "Root must propagate the public origin IP instead of private Gateway status addresses")
+for listener in gateway["spec"]["listeners"]:
+    if listener["protocol"] == "HTTPS":
+        require(listener["port"] == 443 and listener["tls"]["mode"] == "Terminate", "Incorrect TLS listener")
+        require(listener["tls"]["certificateRefs"][0]["name"] in {cert["spec"]["secretName"] for cert in certs},
+                "Gateway references a missing certificate")
+route = next(obj for obj in objects if obj["kind"] == "HTTPRoute" and obj["metadata"]["name"] == "https-test")
+require(route["spec"]["hostnames"] == ["test.kurza.nl"], "Test app must publish only its own hostname")
+require(route["spec"]["parentRefs"][0]["sectionName"] == "kurza-nl-https", "Test must use HTTPS")
+require(all(obj["spec"].get("type", "ClusterIP") == "ClusterIP" for obj in objects if obj["kind"] == "Service"),
+        "Application Services must remain internal")
+
+app = next(app for app in apps if app["metadata"]["name"] == "external-dns")
+source = app["spec"]["sources"][0]
+chart_args = [args.external_dns_chart] if args.external_dns_chart else [
+    source["chart"], "--repo", source["repoURL"], "--version", source["targetRevision"],
+]
+rendered = subprocess.check_output([
+    "helm", "template", "external-dns", *chart_args, "--namespace", "external-dns",
+    "--values", str(root / "argocd/values/external-dns.yaml"),
+], text=True)
+dns = [obj for obj in yaml.safe_load_all(rendered) if obj]
+container = next(obj for obj in dns if obj["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]
+flags = container["args"]
+for flag in ("--source=gateway-httproute", "--provider=cloudflare", "--cloudflare-proxied",
+             "--domain-filter=dylannas.nl", "--domain-filter=kurza.nl", "--registry=txt",
+             "--txt-owner-id=kurza-infrastructure", "--policy=upsert-only",
+             "--label-filter=infrastructure.kurza.nl/public-dns=true", "--gateway-namespace=public-ingress"):
+    require(flag in flags, f"Missing DNS boundary: {flag}")
+require([flag for flag in flags if flag.startswith("--source=")] == ["--source=gateway-httproute"],
+        "Do not publish private Tailscale ingress or Services")
+require(next(env for env in container["env"] if env["name"] == "CF_API_TOKEN")["valueFrom"] == {
+    "secretKeyRef": {"name": "cloudflare-api-token", "key": "api-token"},
+}, "ExternalDNS must read its token from BWS")
+print("App-of-apps, BWS references, wildcard TLS and public DNS checks passed.")

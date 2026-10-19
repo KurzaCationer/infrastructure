@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: public-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: '-2'
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dylannas-nl-wildcard
+  namespace: public-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+spec:
+  secretName: dylannas-nl-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+  - '*.dylannas.nl'
+  privateKey:
+    rotationPolicy: Always
+    algorithm: ECDSA
+    size: 256
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kurza-nl-wildcard
+  namespace: public-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+spec:
+  secretName: kurza-nl-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+  - '*.kurza.nl'
+  privateKey:
+    rotationPolicy: Always
+    algorithm: ECDSA
+    size: 256
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-production
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+spec:
+  acme:
+    email: mail@kurza.nl
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-production-account
+    solvers:
+    - selector:
+        dnsZones:
+        - dylannas.nl
+        - kurza.nl
+      dns01:
+        cloudflare:
+          apiTokenSecretRef:
+            name: cloudflare-api-token
+            key: api-token
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: public-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+    external-dns.kubernetes.io/target: 192.0.2.1
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - name: http
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: Same
+  - name: dylannas-nl-https
+    hostname: '*.dylannas.nl'
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        name: dylannas-nl-tls
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            infrastructure.kurza.nl/public-ingress: 'true'
+  - name: kurza-nl-https
+    hostname: '*.kurza.nl'
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        name: kurza-nl-tls
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            infrastructure.kurza.nl/public-ingress: 'true'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-redirect
+  namespace: public-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+spec:
+  parentRefs:
+  - name: public
+    sectionName: http
+  hostnames:
+  - '*.dylannas.nl'
+  - '*.kurza.nl'
+  rules:
+  - filters:
+    - type: RequestRedirect
+      requestRedirect:
+        scheme: https
+        statusCode: 301

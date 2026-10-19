@@ -72,18 +72,18 @@ require(annotations.get("helm.sh/hook") == "pre-delete", "Cleanup must precede u
 require(annotations.get("helm.sh/hook-delete-policy") == "before-hook-creation,hook-succeeded",
         "Keep failed cleanup logs and allow retries")
 require(cleanup["spec"]["backoffLimit"] == 0
-        and cleanup["spec"]["activeDeadlineSeconds"] < 600,
+        and cleanup["spec"]["activeDeadlineSeconds"] < 900,
         "Cleanup must fail within the Helm timeout")
 pod = cleanup["spec"]["template"]["spec"]
 steps = pod["initContainers"] + pod["containers"]
-require(len(steps) == 3, "Expected three ordered cleanup steps")
-for step, resource, name in zip(steps, ["ingress", "proxygroup.tailscale.com",
+require(len(steps) == 4, "Expected four ordered cleanup steps")
+for index, (step, resource, name) in enumerate(zip(steps, ["application.argoproj.io", "ingress", "proxygroup.tailscale.com",
                                       "proxyclass.tailscale.com"],
-                              [ingress["metadata"]["name"], group_name, group_name]):
+                              ["infrastructure", ingress["metadata"]["name"], group_name, group_name])):
     require(step["command"] == ["kubectl"] and step["args"][:3] == ["delete", resource, name],
-            "Cleanup must delete ingress, then proxy group, then proxy class")
+            "Cleanup must delete root application, ingress, proxy group, then proxy class")
     require(all(flag in step["args"] for flag in ["--wait=true", "--ignore-not-found=true",
-                                                 "--timeout=120s"]),
+                                                 "--timeout=300s" if index == 0 else "--timeout=120s"]),
             "Cleanup must wait for finalizers and tolerate already deleted objects")
 role = next(obj for obj in objects if obj["kind"] == "ClusterRole"
             and obj["metadata"]["name"] == pod["serviceAccountName"])

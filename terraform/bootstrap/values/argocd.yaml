@@ -47,6 +47,10 @@ extraObjects:
         resources: [proxygroups, proxyclasses]
         resourceNames: [argocd-ingress]
         verbs: [get, list, watch, delete]
+      - apiGroups: [argoproj.io]
+        resources: [applications]
+        resourceNames: [infrastructure]
+        verbs: [get, list, watch, delete]
   - apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -69,13 +73,17 @@ extraObjects:
         helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 480
+      activeDeadlineSeconds: 780
       template:
         spec:
           serviceAccountName: argocd-tailscale-cleanup
           restartPolicy: Never
           # Wait for controller cleanup before Terraform removes the operator.
           initContainers:
+            - name: delete-root-application
+              image: registry.k8s.io/kubectl:v1.36.3
+              command: [kubectl]
+              args: [delete, application.argoproj.io, infrastructure, --namespace=argocd, --ignore-not-found=true, --wait=true, --timeout=300s, --request-timeout=30s]
             - name: delete-ingress
               image: registry.k8s.io/kubectl:v1.36.3
               command: [kubectl]

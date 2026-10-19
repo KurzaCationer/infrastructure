@@ -72,7 +72,31 @@ module "cluster" {
     operator = {
       replicas = 1
     }
+    gatewayAPI = {
+      hostNetwork = {
+        enabled = true
+      }
+    }
+    envoy = {
+      enabled = true
+      securityContext = {
+        capabilities = {
+          keepCapNetBindService = true
+          envoy                 = ["NET_ADMIN", "SYS_ADMIN", "NET_BIND_SERVICE"]
+        }
+      }
+    }
   })
+
+  # Kube-Hetzner 3.2.1 merges rules by direction/protocol/port. These replace
+  # its single-node defaults that otherwise allow 80/443 from the whole world.
+  extra_firewall_rules = [for port in ["80", "443"] : {
+    description = "Cloudflare proxy only TCP ${port}"
+    direction   = "in"
+    protocol    = "tcp"
+    port        = port
+    source_ips  = local.cloudflare_proxy_cidrs
+  }]
 
   # Tailscale transport disables CCM networking defaults. Keep private node
   # address discovery enabled without enabling Hetzner pod-route management.

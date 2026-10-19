@@ -1,0 +1,23 @@
+namespaceOverride: external-dns
+provider:
+  name: cloudflare
+sources:
+  - gateway-httproute
+gatewayNamespace: public-ingress
+labelFilter: infrastructure.kurza.nl/public-dns=true
+domainFilters:
+  - dylannas.nl
+  - kurza.nl
+registry: txt
+txtOwnerId: kurza-infrastructure
+txtPrefix: _external-dns.
+# Keep records on removal; avoid deleting DNS during transient route failures.
+policy: upsert-only
+extraArgs:
+  - --cloudflare-proxied
+env:
+  - name: CF_API_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: cloudflare-api-token
+        key: api-token
