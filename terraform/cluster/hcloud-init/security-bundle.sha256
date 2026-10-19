@@ -1,0 +1,13 @@
+# kube-hetzner Packer security bundle, relative to packer-template/.
+# Keep this list exact: scripts/install-packer-security-bundle.sh rejects
+# missing, duplicate, or additional entries.
+b1bcbf1e497a2f0e2ccb40da41d5f7d9ecb677155140fd96df4652fb57d85acf  hcloud-leapmicro-snapshots.pkr.hcl
+30dde8c10c81393d01613c70fa1e239143244f2dbcaaaadc7e5bd3b1ba722e90  hcloud-microos-snapshots.pkr.hcl
+b5745739ebfb95b25b8e810f9bcb847fe750ccda598bd85f02f0e974599a6d7e  keys/opensuse-project-signing-key.asc
+7d2415f7fc532c365c8874bfad966566daaa0d04a9a5ba14d1db6080a9c12629  keys/rancher-ci-signing-key.asc
+254585d32954ef6b2103ec16f0e6e6818b61107ffe024d464a5ae4b6c8eb57b9  scripts/install-packer-security-bundle.sh
+98d630061204b2971289bad216bf5e6dc1ce9d6e29625915c1372d412885c1b8  scripts/install-verified-packer-plugin-hcloud.sh
+95875a5e4cece275553382878859fc6444265ec4a1b465c1237e533d03060bcd  scripts/install-verified-rancher-rpm.sh
+c7cb90a0e001e2700d1378107f33a9a8131ed756fc9295968a08a7b99b75dda7  scripts/verify-leapmicro-image.sh
+8475c8ea4d5fba0288c000bd91eb216b59682e409254b78599e391901b5e1bb1  scripts/verify-microos-image.sh
+122efe34e44a716c8879d048311b2a777e5d3ae519f5ae5ca08080613e82188e  scripts/verify-rancher-rpm.sh

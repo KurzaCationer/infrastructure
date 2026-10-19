@@ -1,0 +1,121 @@
+name: Terraform Layer
+
+on:
+  workflow_call:
+    inputs:
+      layer:
+        required: true
+        type: string
+      operation:
+        description: Terraform operation (apply or destroy)
+        required: false
+        default: apply
+        type: string
+    secrets:
+      BWS_ACCESS_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    name: ${{ inputs.operation }} ${{ inputs.layer }}
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    # Keep provisioning within the one-hour enrollment-key lifetime.
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/${{ inputs.layer }}
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+      BW_ORGANIZATION_ID: ${{ vars.BW_ORGANIZATION_ID }}
+      BW_API_URL: ${{ vars.BW_API_URL || 'https://api.bitwarden.com' }}
+      BW_IDENTITY_API_URL: ${{ vars.BW_IDENTITY_API_URL || 'https://identity.bitwarden.com' }}
+      TF_VAR_bitwarden_secret_ids: ${{ vars.BW_SECRET_IDS }}
+      TF_VAR_tailscale_magicdns_domain: ${{ vars.TS_MAGICDNS_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '1.16.6'
+          terraform_wrapper: false
+      - name: Check configuration
+        env:
+          LAYER: ${{ inputs.layer }}
+          OPERATION: ${{ inputs.operation }}
+          TS_CLIENT_ID: ${{ vars.TS_CLIENT_ID }}
+          TS_AUDIENCE: ${{ vars.TS_AUDIENCE }}
+          TS_NODE_CLIENT_ID: ${{ vars.TS_NODE_CLIENT_ID }}
+          TS_NODE_AUDIENCE: ${{ vars.TS_NODE_AUDIENCE }}
+        run: |
+          case "$LAYER" in
+            cluster|bootstrap) ;;
+            *) echo 'Unsupported Terraform layer.' >&2; exit 1 ;;
+          esac
+          case "$OPERATION" in
+            apply|destroy) ;;
+            *) echo 'Unsupported Terraform operation.' >&2; exit 1 ;;
+          esac
+          : "${AWS_REGION:?Set the AWS_REGION repository variable.}"
+          : "${TF_STATE_BUCKET:?Set the TF_STATE_BUCKET repository variable.}"
+          if [[ "$LAYER" == 'cluster' ]]; then
+            : "${BW_ACCESS_TOKEN:?Set the BWS_ACCESS_TOKEN repository secret.}"
+            : "${BW_ORGANIZATION_ID:?Set the BW_ORGANIZATION_ID repository variable.}"
+            : "${TF_VAR_bitwarden_secret_ids:?Set the BW_SECRET_IDS repository variable.}"
+            : "${TF_VAR_tailscale_magicdns_domain:?Set the TS_MAGICDNS_DOMAIN repository variable.}"
+            : "${TS_CLIENT_ID:?Set the TS_CLIENT_ID repository variable.}"
+            : "${TS_AUDIENCE:?Set the TS_AUDIENCE repository variable.}"
+            : "${TS_NODE_CLIENT_ID:?Set the TS_NODE_CLIENT_ID repository variable.}"
+            : "${TS_NODE_AUDIENCE:?Set the TS_NODE_AUDIENCE repository variable.}"
+          fi
+      - name: Authenticate to AWS with OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_IAM_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: '154009488279'
+      - name: Connect to the tailnet for private SSH and Kubernetes access
+        if: inputs.layer == 'cluster'
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:ci
+      - name: Initialize S3 backend
+        run: terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$AWS_REGION"
+      - run: terraform validate -no-color
+      - name: Create short-lived node enrollment key using federation
+        id: enrollment
+        if: inputs.layer == 'cluster'
+        env:
+          TS_NODE_CLIENT_ID: ${{ vars.TS_NODE_CLIENT_ID }}
+          TS_NODE_AUDIENCE: ${{ vars.TS_NODE_AUDIENCE }}
+        run: python3 "$GITHUB_WORKSPACE/.github/scripts/tailscale_enrollment.py" create
+      - name: Plan
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          plan_args=()
+          if [[ "$OPERATION" == 'destroy' ]]; then
+            plan_args+=(-destroy)
+          fi
+          terraform plan "${plan_args[@]}" -input=false -no-color -lock-timeout=5m -out=deployment.tfplan
+      - name: Apply saved plan
+        run: terraform apply -input=false -no-color -lock-timeout=5m deployment.tfplan
+      - name: Revoke node enrollment key
+        if: always() && inputs.layer == 'cluster' && steps.enrollment.outputs.key_id != ''
+        env:
+          TS_NODE_CLIENT_ID: ${{ vars.TS_NODE_CLIENT_ID }}
+          TS_NODE_AUDIENCE: ${{ vars.TS_NODE_AUDIENCE }}
+          TS_NODE_KEY_ID: ${{ steps.enrollment.outputs.key_id }}
+        run: python3 "$GITHUB_WORKSPACE/.github/scripts/tailscale_enrollment.py" revoke

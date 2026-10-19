@@ -1,0 +1,53 @@
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type destroy to remove all Terraform-managed infrastructure
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Share the deployment lock across the entire teardown; never cancel a mutation.
+concurrency:
+  group: terraform-deploy
+  cancel-in-progress: false
+
+jobs:
+  confirm:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm destruction
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [[ "$CONFIRMATION" != 'destroy' ]]; then
+            echo 'Type destroy in the confirmation input to run this workflow.' >&2
+            exit 1
+          fi
+
+  bootstrap:
+    needs: confirm
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/terraform-layer.yml
+    with:
+      layer: bootstrap
+      operation: destroy
+
+  cluster:
+    needs: bootstrap
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/terraform-layer.yml
+    with:
+      layer: cluster
+      operation: destroy
+    secrets:
+      BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}

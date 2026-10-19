@@ -1,0 +1,66 @@
+name: Terraform Apply
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform*.yml'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keep both layers of a deployment together; never cancel an active apply.
+concurrency:
+  group: terraform-${{ github.event_name == 'workflow_dispatch' && 'deploy' || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.layer }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        layer: [cluster, bootstrap]
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.layer }}
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '1.16.6'
+          terraform_wrapper: false
+      - run: terraform fmt -check
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate -no-color
+      - name: Test enrollment-key lifecycle without network access
+        if: matrix.layer == 'cluster'
+        run: python3 "$GITHUB_WORKSPACE/.github/scripts/test_tailscale_enrollment.py"
+
+  cluster:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/terraform-layer.yml
+    with:
+      layer: cluster
+    secrets:
+      BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+
+  bootstrap:
+    needs: cluster
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/terraform-layer.yml
+    with:
+      layer: bootstrap
