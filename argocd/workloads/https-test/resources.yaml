@@ -108,12 +108,21 @@ metadata:
     infrastructure.kurza.nl/public-dns: 'true'
 spec:
   parentRefs:
-  - name: public
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public
     namespace: public-ingress
     sectionName: kurza-nl-https
   hostnames:
   - test.kurza.nl
   rules:
-  - backendRefs:
-    - name: https-test
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - group: ""
+      kind: Service
+      name: https-test
       port: 80
+      weight: 1

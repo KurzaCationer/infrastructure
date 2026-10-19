@@ -128,20 +128,6 @@ jobs:
           terraform plan "${plan_args[@]}" -input=false -no-color -lock-timeout=5m -out=deployment.tfplan
       - name: Apply saved plan
         run: terraform apply -input=false -no-color -lock-timeout=5m deployment.tfplan
-      - name: Install kubectl for namespace-local BWS authentication
-        if: inputs.layer == 'bootstrap' && inputs.operation == 'apply'
-        uses: azure/setup-kubectl@v4
-        with:
-          version: 'v1.36.3'
-      - name: Initialize BWS authentication for Argo CD applications
-        if: inputs.layer == 'bootstrap' && inputs.operation == 'apply'
-        run: |
-          umask 077
-          KUBECONFIG=$(mktemp)
-          export KUBECONFIG
-          trap 'rm -f -- "$KUBECONFIG"' EXIT
-          terraform output -raw kubeconfig > "$KUBECONFIG"
-          python3 "$GITHUB_WORKSPACE/.github/scripts/bootstrap_bws_auth.py"
       - name: Revoke node enrollment key
         if: always() && inputs.layer == 'cluster' && steps.enrollment.outputs.key_id != ''
         env:

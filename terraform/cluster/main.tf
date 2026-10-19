@@ -67,10 +67,13 @@ module "cluster" {
   cni_plugin                 = "cilium"
   enable_kube_proxy          = false
   cilium_gateway_api_enabled = true
-  ingress_controller         = "none"
+  # Includes the host-network Gateway status fix (first backported in 1.19.6).
+  cilium_version     = "1.19.9"
+  ingress_controller = "none"
   cilium_merge_values = yamlencode({
     operator = {
-      replicas = 1
+      replicas    = 1
+      rollOutPods = true
     }
     gatewayAPI = {
       hostNetwork = {

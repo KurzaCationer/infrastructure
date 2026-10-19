@@ -154,5 +154,5 @@ resource "helm_release" "argocd" {
   # has installed its CRDs; Terraform need not discover those CRDs during plan.
   # The Argo CD pre-delete hook waits for Ingress, ProxyGroup and ProxyClass
   # cleanup before this dependency allows the operator to be uninstalled.
-  depends_on = [helm_release.tailscale_operator]
+  depends_on = [helm_release.tailscale_operator, kubernetes_secret_v1.public_bitwarden_auth]
 }

@@ -17,6 +17,16 @@ configs:
   cm:
     admin.enabled: true
     users.anonymous.enabled: false
+    # Issuers in the next sync wave must wait for the Cloudflare token.
+    resource.customizations.health.k8s.bitwarden.com_BitwardenSecret: |
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for _, condition in ipairs(obj.status.conditions) do
+          if condition.type == "SuccessfulSync" and condition.status == "True" then
+            return {status = "Healthy", message = "Secrets synchronized"}
+          end
+        end
+      end
+      return {status = "Progressing", message = "Waiting for Bitwarden secret synchronization"}
   rbac:
     policy.default: ""
 
