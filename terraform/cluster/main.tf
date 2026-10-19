@@ -74,6 +74,21 @@ module "cluster" {
     }
   })
 
+  # Tailscale transport disables CCM networking defaults. Keep private node
+  # address discovery enabled without enabling Hetzner pod-route management.
+  hetzner_ccm_merge_values = yamlencode({
+    env = {
+      HCLOUD_NETWORK = {
+        valueFrom = {
+          secretKeyRef = {
+            name = "hcloud"
+            key  = "network"
+          }
+        }
+      }
+    }
+  })
+
   # Keep this single-node cluster's upgrades manual.
   automatically_upgrade_os         = false
   automatically_upgrade_kubernetes = false
