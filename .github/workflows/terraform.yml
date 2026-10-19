@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'terraform/**'
+      - 'argocd/**'
       - '.github/workflows/terraform*.yml'
       - '.github/scripts/**'
   workflow_dispatch:
@@ -40,6 +41,11 @@ jobs:
       - run: terraform fmt -check
       - run: terraform init -backend=false -input=false
       - run: terraform validate -no-color
+      - name: Verify rendered Argo CD has only private exposure
+        if: matrix.layer == 'bootstrap'
+        run: |
+          python3 -m pip install PyYAML==6.0.3
+          python3 "$GITHUB_WORKSPACE/.github/scripts/check_argocd.py"
       - name: Test enrollment-key lifecycle without network access
         if: matrix.layer == 'cluster'
         run: python3 "$GITHUB_WORKSPACE/.github/scripts/test_tailscale_enrollment.py"
@@ -64,3 +70,5 @@ jobs:
     uses: ./.github/workflows/terraform-layer.yml
     with:
       layer: bootstrap
+    secrets:
+      BWS_OPERATOR_ACCESS_TOKEN: ${{ secrets.BWS_OPERATOR_ACCESS_TOKEN }}

@@ -38,18 +38,18 @@ jobs:
         id: config
         env:
           BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
-          BW_SECRET_IDS: ${{ vars.BW_SECRET_IDS }}
+          BWS_SECRET_IDS: ${{ vars.BWS_SECRET_IDS }}
         run: |
           : "${BWS_ACCESS_TOKEN:?Set the BWS_ACCESS_TOKEN repository secret.}"
-          : "${BW_SECRET_IDS:?Set the BW_SECRET_IDS repository variable.}"
-          secret_id=$(jq -er '.hcloud_token | select(type == "string") | select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))' <<< "$BW_SECRET_IDS")
+          : "${BWS_SECRET_IDS:?Set the BWS_SECRET_IDS repository variable.}"
+          secret_id=$(jq -er '.hcloud_token | select(type == "string") | select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))' <<< "$BWS_SECRET_IDS")
           printf 'hcloud_token_secret_id=%s\n' "$secret_id" >> "$GITHUB_OUTPUT"
       - name: Retrieve Hetzner token from Bitwarden
         uses: bitwarden/sm-action@v3.0.1
         with:
           access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
-          api_url: ${{ vars.BW_API_URL || 'https://api.bitwarden.com' }}
-          identity_url: ${{ vars.BW_IDENTITY_API_URL || 'https://identity.bitwarden.com' }}
+          api_url: ${{ vars.BWS_API_URL || 'https://api.bitwarden.com' }}
+          identity_url: ${{ vars.BWS_IDENTITY_API_URL || 'https://identity.bitwarden.com' }}
           secrets: |
             ${{ steps.config.outputs.hcloud_token_secret_id }} > HCLOUD_TOKEN
       - name: Build snapshots

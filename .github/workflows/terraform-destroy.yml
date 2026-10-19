@@ -39,6 +39,8 @@ jobs:
     with:
       layer: bootstrap
       operation: destroy
+    secrets:
+      BWS_OPERATOR_ACCESS_TOKEN: ${{ secrets.BWS_OPERATOR_ACCESS_TOKEN }}
 
   cluster:
     needs: bootstrap

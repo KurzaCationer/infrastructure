@@ -14,6 +14,8 @@ on:
     secrets:
       BWS_ACCESS_TOKEN:
         required: false
+      BWS_OPERATOR_ACCESS_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -35,12 +37,22 @@ jobs:
       TF_INPUT: 'false'
       AWS_REGION: ${{ vars.AWS_REGION }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      # The Bitwarden Terraform provider requires these BW_ environment names.
+      # User-configured GitHub settings consistently use BWS_.
       BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
-      BW_ORGANIZATION_ID: ${{ vars.BW_ORGANIZATION_ID }}
-      BW_API_URL: ${{ vars.BW_API_URL || 'https://api.bitwarden.com' }}
-      BW_IDENTITY_API_URL: ${{ vars.BW_IDENTITY_API_URL || 'https://identity.bitwarden.com' }}
-      TF_VAR_bitwarden_secret_ids: ${{ vars.BW_SECRET_IDS }}
+      BW_ORGANIZATION_ID: ${{ vars.BWS_ORGANIZATION_ID }}
+      BW_API_URL: ${{ vars.BWS_API_URL || 'https://api.bitwarden.com' }}
+      BW_IDENTITY_API_URL: ${{ vars.BWS_IDENTITY_API_URL || 'https://identity.bitwarden.com' }}
+      TF_VAR_bitwarden_secret_ids: ${{ vars.BWS_SECRET_IDS }}
       TF_VAR_tailscale_magicdns_domain: ${{ vars.TS_MAGICDNS_DOMAIN }}
+      TF_VAR_state_bucket: ${{ vars.TF_STATE_BUCKET }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_bitwarden_organization_id: ${{ vars.BWS_ORGANIZATION_ID }}
+      TF_VAR_bitwarden_api_url: ${{ vars.BWS_API_URL || 'https://api.bitwarden.com' }}
+      TF_VAR_bitwarden_identity_url: ${{ vars.BWS_IDENTITY_API_URL || 'https://identity.bitwarden.com' }}
+      TF_VAR_tailscale_operator_secret_ids: ${{ vars.BWS_OPERATOR_SECRET_IDS }}
+      TF_VAR_bitwarden_operator_access_token: ${{ secrets.BWS_OPERATOR_ACCESS_TOKEN }}
+      TF_VAR_bitwarden_operator_access_token_revision: ${{ vars.BWS_OPERATOR_ACCESS_TOKEN_REVISION || '1' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -68,15 +80,19 @@ jobs:
           esac
           : "${AWS_REGION:?Set the AWS_REGION repository variable.}"
           : "${TF_STATE_BUCKET:?Set the TF_STATE_BUCKET repository variable.}"
+          : "${TF_VAR_tailscale_magicdns_domain:?Set the TS_MAGICDNS_DOMAIN repository variable.}"
+          : "${TS_CLIENT_ID:?Set the TS_CLIENT_ID repository variable.}"
+          : "${TS_AUDIENCE:?Set the TS_AUDIENCE repository variable.}"
           if [[ "$LAYER" == 'cluster' ]]; then
             : "${BW_ACCESS_TOKEN:?Set the BWS_ACCESS_TOKEN repository secret.}"
-            : "${BW_ORGANIZATION_ID:?Set the BW_ORGANIZATION_ID repository variable.}"
-            : "${TF_VAR_bitwarden_secret_ids:?Set the BW_SECRET_IDS repository variable.}"
-            : "${TF_VAR_tailscale_magicdns_domain:?Set the TS_MAGICDNS_DOMAIN repository variable.}"
-            : "${TS_CLIENT_ID:?Set the TS_CLIENT_ID repository variable.}"
-            : "${TS_AUDIENCE:?Set the TS_AUDIENCE repository variable.}"
+            : "${BW_ORGANIZATION_ID:?Set the BWS_ORGANIZATION_ID repository variable.}"
+            : "${TF_VAR_bitwarden_secret_ids:?Set the BWS_SECRET_IDS repository variable.}"
             : "${TS_NODE_CLIENT_ID:?Set the TS_NODE_CLIENT_ID repository variable.}"
             : "${TS_NODE_AUDIENCE:?Set the TS_NODE_AUDIENCE repository variable.}"
+          else
+            : "${TF_VAR_bitwarden_organization_id:?Set the BWS_ORGANIZATION_ID repository variable.}"
+            : "${TF_VAR_tailscale_operator_secret_ids:?Set the BWS_OPERATOR_SECRET_IDS repository variable.}"
+            : "${TF_VAR_bitwarden_operator_access_token:?Set the BWS_OPERATOR_ACCESS_TOKEN repository secret.}"
           fi
       - name: Authenticate to AWS with OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
@@ -85,7 +101,6 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           allowed-account-ids: '154009488279'
       - name: Connect to the tailnet for private SSH and Kubernetes access
-        if: inputs.layer == 'cluster'
         uses: tailscale/github-action@v4
         with:
           version: '1.104.1'
