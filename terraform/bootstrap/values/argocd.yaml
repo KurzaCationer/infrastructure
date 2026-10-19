@@ -1,0 +1,64 @@
+# Terraform owns this Helm release and the operator. Future GitOps applications
+# should not adopt these same resources without an explicit ownership migration.
+fullnameOverride: argocd
+
+# One replica per component for the single-node cluster.
+redis-ha:
+  enabled: false
+dex:
+  enabled: false
+notifications:
+  enabled: false
+
+configs:
+  params:
+    # Tailscale terminates HTTPS and forwards HTTP to the ClusterIP service.
+    server.insecure: true
+  cm:
+    admin.enabled: true
+    users.anonymous.enabled: false
+  rbac:
+    policy.default: ""
+
+server:
+  replicas: 1
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+
+extraObjects:
+  - apiVersion: tailscale.com/v1alpha1
+    kind: ProxyGroup
+    metadata:
+      name: argocd-ingress
+    spec:
+      type: ingress
+      # A ProxyGroup creates a Tailscale Service even with a single replica.
+      replicas: 1
+      tags:
+        - tag:kurza-k8s-proxy
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: argocd
+      namespace: argocd
+      annotations:
+        tailscale.com/proxy-group: argocd-ingress
+        tailscale.com/tags: tag:kurza-argocd
+        tailscale.com/funnel: "false"
+    spec:
+      ingressClassName: tailscale
+      tls:
+        - hosts:
+            - argocd
+      rules:
+        - http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: argocd-server
+                    port:
+                      number: 80

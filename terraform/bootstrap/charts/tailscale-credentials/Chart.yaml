@@ -1,0 +1,5 @@
+apiVersion: v2
+name: tailscale-credentials
+description: References for Bitwarden-managed Tailscale operator credentials
+type: application
+version: 0.1.0
