@@ -490,18 +490,10 @@ Setup:
 2. Merge and run **Terraform Apply** once to configure the firewall/Cilium and
    root Application. Argo CD then reconciles `argocd/` automatically. If the
    repository is private, first configure its read-only credentials in Argo CD.
-3. BWS authentication references are namespace-local. Copy the existing operator
-   auth Secret once into the two consumer namespaces (repeat after machine-token
-   rotation); the Cloudflare token itself remains managed by BWS:
-
-   ```sh
-   kubectl create namespace external-dns --dry-run=client -o yaml | kubectl apply -f -
-   for ns in cert-manager external-dns; do
-     kubectl -n tailscale get secret bitwarden-auth -o json |
-       jq --arg ns "$ns" '{apiVersion,kind,metadata:{name:"bitwarden-auth",namespace:$ns},type,data}' |
-       kubectl apply -f -
-   done
-   ```
+3. The workflow automatically initializes namespace-local BWS authentication in
+   `cert-manager` and `external-dns` from the existing operator token on every
+   apply, including rotations. It fails if BWS cannot create the Cloudflare
+   credential Secrets. No Secret copying is required.
 
 Verify `kubectl -n argocd get applications`, wait for both certificates to be
 Ready in `public-ingress`, then open `https://test.kurza.nl`. Direct access must
@@ -633,8 +625,10 @@ sha256sum --check security-bundle.sha256
 
 ## Security and ownership
 
-Terraform manages `bitwarden-auth` in `tailscale`, `cert-manager` and
-`external-dns` using `kubernetes_secret_v1.data_wo`.
+Terraform manages `tailscale/bitwarden-auth` using `kubernetes_secret_v1.data_wo`.
+After bootstrap apply, CI initializes the corresponding auth Secrets in
+`cert-manager` and `external-dns` using the same pipeline token and server-side
+apply. Token values stay out of command arguments, logs and Helm values.
 Its token comes from a sensitive, ephemeral input and is omitted from saved plans
 and state. This initial machine token lets the Bitwarden operator log in and
 bootstrap secret synchronization. It is never supplied to Helm.

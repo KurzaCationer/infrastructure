@@ -47,6 +47,7 @@ jobs:
           python3 -m pip install PyYAML==6.0.3
           python3 "$GITHUB_WORKSPACE/.github/scripts/check_argocd.py"
           python3 "$GITHUB_WORKSPACE/.github/scripts/check_public_ingress.py"
+          python3 "$GITHUB_WORKSPACE/.github/scripts/test_bootstrap_bws_auth.py"
       - name: Test enrollment-key lifecycle without network access
         if: matrix.layer == 'cluster'
         run: python3 "$GITHUB_WORKSPACE/.github/scripts/test_tailscale_enrollment.py"
