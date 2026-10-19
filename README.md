@@ -33,6 +33,8 @@ This is a small, non-HA starting point. Nodes enroll into Tailscale during
 cloud-init. Public SSH and Kubernetes API firewall rules are disabled;
 Terraform and operators connect using the node's tailnet MagicDNS name.
 Nodes retain public addresses for outbound bootstrap and Tailscale connectivity.
+Terraform persists `net.ipv4.conf.all.accept_local=1` on cluster nodes so
+Tailscale's source validation settings do not break Cilium's transparent proxy.
 
 The Terraform `bootstrap` layer reads the cluster kubeconfig from S3 and installs
 Bitwarden Secrets Manager operator chart **2.0.3**, a `BitwardenSecret` mapping,
