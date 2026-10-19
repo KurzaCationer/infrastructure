@@ -28,6 +28,67 @@ server:
     enabled: false
 
 extraObjects:
+  # Regular release resources survive until the pre-delete Job finishes.
+  - apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: argocd-tailscale-cleanup
+      namespace: argocd
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: argocd-tailscale-cleanup
+    rules:
+      - apiGroups: [networking.k8s.io]
+        resources: [ingresses]
+        resourceNames: [argocd]
+        verbs: [get, list, watch, delete]
+      - apiGroups: [tailscale.com]
+        resources: [proxygroups, proxyclasses]
+        resourceNames: [argocd-ingress]
+        verbs: [get, list, watch, delete]
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: argocd-tailscale-cleanup
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: argocd-tailscale-cleanup
+    subjects:
+      - kind: ServiceAccount
+        name: argocd-tailscale-cleanup
+        namespace: argocd
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: argocd-tailscale-cleanup
+      namespace: argocd
+      annotations:
+        helm.sh/hook: pre-delete
+        helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 480
+      template:
+        spec:
+          serviceAccountName: argocd-tailscale-cleanup
+          restartPolicy: Never
+          # Wait for controller cleanup before Terraform removes the operator.
+          initContainers:
+            - name: delete-ingress
+              image: registry.k8s.io/kubectl:v1.36.3
+              command: [kubectl]
+              args: [delete, ingress, argocd, --namespace=argocd, --ignore-not-found=true, --wait=true, --timeout=120s, --request-timeout=30s]
+            - name: delete-proxygroup
+              image: registry.k8s.io/kubectl:v1.36.3
+              command: [kubectl]
+              args: [delete, proxygroup.tailscale.com, argocd-ingress, --ignore-not-found=true, --wait=true, --timeout=120s, --request-timeout=30s]
+          containers:
+            - name: delete-proxyclass
+              image: registry.k8s.io/kubectl:v1.36.3
+              command: [kubectl]
+              args: [delete, proxyclass.tailscale.com, argocd-ingress, --ignore-not-found=true, --wait=true, --timeout=120s, --request-timeout=30s]
   - apiVersion: tailscale.com/v1alpha1
     kind: ProxyClass
     metadata:

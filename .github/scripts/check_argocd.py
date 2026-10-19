@@ -1,6 +1,7 @@
 """Render the actual pinned chart and reject public Argo CD exposure."""
 
 from pathlib import Path
+import argparse
 import re
 import subprocess
 
@@ -11,9 +12,14 @@ root = Path(__file__).resolve().parents[2]
 terraform = (root / "terraform/bootstrap/main.tf").read_text()
 release = terraform.split('resource "helm_release" "argocd" {', 1)[1]
 version = re.search(r'version\s*=\s*"([^"]+)"', release).group(1)
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--chart", help="Use a downloaded chart archive for offline validation")
+args = parser.parse_args()
+chart_args = [args.chart] if args.chart else [
+    "argo-cd", "--repo", "https://argoproj.github.io/argo-helm", "--version", version,
+]
 rendered = subprocess.run(
-    ["helm", "template", "argocd", "argo-cd", "--repo",
-     "https://argoproj.github.io/argo-helm", "--version", version,
+    ["helm", "template", "argocd", *chart_args,
      "--namespace", "argocd", "--values", str(root / "terraform/bootstrap/values/argocd.yaml")],
     check=True, capture_output=True, text=True,
 ).stdout
@@ -57,4 +63,31 @@ require(any(obj["kind"] == "Service" and obj["metadata"]["name"] == backend["nam
 params = next(obj for obj in objects if obj["kind"] == "ConfigMap"
               and obj["metadata"]["name"] == "argocd-cmd-params-cm")
 require(params["data"]["server.insecure"] == "true", "Backend must accept proxy HTTP")
-print(f"Argo CD {version}: private Services, Tailscale HTTPS ingress and backend verified.")
+
+# A failed cleanup must block Helm before Terraform can uninstall the operator.
+cleanup = next(obj for obj in objects if obj["kind"] == "Job"
+               and obj["metadata"]["name"] == "argocd-tailscale-cleanup")
+annotations = cleanup["metadata"]["annotations"]
+require(annotations.get("helm.sh/hook") == "pre-delete", "Cleanup must precede uninstall")
+require(annotations.get("helm.sh/hook-delete-policy") == "before-hook-creation,hook-succeeded",
+        "Keep failed cleanup logs and allow retries")
+require(cleanup["spec"]["backoffLimit"] == 0
+        and cleanup["spec"]["activeDeadlineSeconds"] < 600,
+        "Cleanup must fail within the Helm timeout")
+pod = cleanup["spec"]["template"]["spec"]
+steps = pod["initContainers"] + pod["containers"]
+require(len(steps) == 3, "Expected three ordered cleanup steps")
+for step, resource, name in zip(steps, ["ingress", "proxygroup.tailscale.com",
+                                      "proxyclass.tailscale.com"],
+                              [ingress["metadata"]["name"], group_name, group_name]):
+    require(step["command"] == ["kubectl"] and step["args"][:3] == ["delete", resource, name],
+            "Cleanup must delete ingress, then proxy group, then proxy class")
+    require(all(flag in step["args"] for flag in ["--wait=true", "--ignore-not-found=true",
+                                                 "--timeout=120s"]),
+            "Cleanup must wait for finalizers and tolerate already deleted objects")
+role = next(obj for obj in objects if obj["kind"] == "ClusterRole"
+            and obj["metadata"]["name"] == pod["serviceAccountName"])
+require(all(set(rule["verbs"]) == {"get", "list", "watch", "delete"}
+            and rule.get("resourceNames") for rule in role["rules"]),
+        "Cleanup permissions must be named deletes with no ability to strip finalizers")
+print(f"Argo CD {version}: private ingress, backend and ordered teardown hook verified.")

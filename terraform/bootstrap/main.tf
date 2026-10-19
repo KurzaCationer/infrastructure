@@ -143,6 +143,7 @@ resource "helm_release" "argocd" {
 
   # extraObjects includes a ProxyGroup. Helm creates it only after the operator
   # has installed its CRDs; Terraform need not discover those CRDs during plan.
-  # This dependency also removes the ingress before uninstalling its controller.
+  # The Argo CD pre-delete hook waits for Ingress, ProxyGroup and ProxyClass
+  # cleanup before this dependency allows the operator to be uninstalled.
   depends_on = [helm_release.tailscale_operator]
 }

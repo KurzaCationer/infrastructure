@@ -34,6 +34,16 @@ Terraform owns these releases and their resources. Future GitOps manifests
 belong under the root `argocd/` path; there are none committed yet. Avoid assigning
 the same resources to Argo CD without an explicit ownership migration.
 
+Argo CD's pre-delete Job removes its Ingress, ProxyGroup and ProxyClass in that
+order and waits for their finalizers while the Tailscale operator is still
+running. It also covers the named ProxyClass if it was created outside the
+stored Helm manifest. A cleanup failure stops teardown before the operator is
+removed. Inspect the Job's container logs in `argocd` before retrying. The hook
+never strips finalizers. Its kubectl image is pinned to Kubernetes 1.36; keep it
+compatible with the cluster when upgrading. Apply bootstrap changes before
+destroying an existing deployment so Helm stores the hook in the installed
+release.
+
 Argo CD uses Tailscale Service `svc:argocd` at
 `https://argocd.<your-tailnet>.ts.net`. Its Service remains `ClusterIP`; HTTPS
 terminates on the proxy. The root guide includes the required tailnet policy,
