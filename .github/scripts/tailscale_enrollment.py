@@ -21,10 +21,13 @@ def required(name):
     return single_line(os.environ.get(name), name)
 
 
-def request_json(url, *, method="GET", headers=None, data=None, allow_missing=False):
+def request_json(url, *, method="GET", headers=None, data=None, allow_missing=False,
+                 expect_json=True):
     request = Request(url, data=data, headers=headers or {}, method=method)
     try:
         with urlopen(request, timeout=30) as response:
+            if not expect_json:
+                return {}
             body = response.read()
             result = json.loads(body) if body else {}
             if not isinstance(result, dict):
@@ -38,7 +41,7 @@ def request_json(url, *, method="GET", headers=None, data=None, allow_missing=Fa
     except (URLError, TimeoutError):
         raise RuntimeError(f"Cannot reach {urlsplit(url).hostname}.") from None
     except (ValueError, UnicodeError):
-        raise RuntimeError("Invalid JSON response from credential service.") from None
+        raise RuntimeError(f"Invalid JSON response from {method} {urlsplit(url).hostname}.") from None
 
 
 def mask(value):
@@ -110,6 +113,8 @@ def revoke():
         method="DELETE",
         headers={"Authorization": f"Bearer {access_token()}"},
         allow_missing=True,
+        # Successful revocation needs only the HTTP status, not a JSON body.
+        expect_json=False,
     )
     print("Enrollment key revoked or already absent.")
 

@@ -86,6 +86,27 @@ class EnrollmentTests(unittest.TestCase):
         self.assertEqual(self.output_file.read_text(), "key_id=test-key-id\n")
         self.assertFalse(self.env_file.exists())
 
+    def test_revoke_accepts_success_without_a_json_object(self):
+        for body in (b"", b"\n", b"OK", b"null", b"{}"):
+            with self.subTest(body=body), patch.object(enrollment, "urlopen", side_effect=[
+                response({"value": "fresh-jwt"}),
+                response({"access_token": "fresh-api-token"}),
+                io.BytesIO(body),
+            ]):
+                enrollment.revoke()
+
+    def test_revoke_still_rejects_http_failure(self):
+        with patch.object(enrollment, "access_token", return_value="test-api-token"), \
+                patch.object(enrollment, "urlopen", side_effect=HTTPError(
+                    "https://api.tailscale.com", 403, "forbidden", {}, None)):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                enrollment.revoke()
+
+    def test_revoke_still_requires_json_federation_response(self):
+        with patch.object(enrollment, "urlopen", return_value=io.BytesIO(b"invalid")):
+            with self.assertRaisesRegex(RuntimeError, "Invalid JSON response from GET"):
+                enrollment.revoke()
+
     def test_api_failure_is_not_retried_or_printed_with_response_body(self):
         error = HTTPError("https://api.tailscale.com", 403, "secret-error-body", {},
                           io.BytesIO(b"secret-response-body"))
