@@ -29,11 +29,25 @@ server:
 
 extraObjects:
   - apiVersion: tailscale.com/v1alpha1
+    kind: ProxyClass
+    metadata:
+      name: argocd-ingress
+    spec:
+      statefulSet:
+        pod:
+          tailscaleContainer:
+            # UDP segmentation offload stalls bulk traffic on this Cilium path.
+            # https://github.com/tailscale/tailscale/issues/20858
+            env:
+              - name: TS_DEBUG_DISABLE_UDP_GSO
+                value: "true"
+  - apiVersion: tailscale.com/v1alpha1
     kind: ProxyGroup
     metadata:
       name: argocd-ingress
     spec:
       type: ingress
+      proxyClass: argocd-ingress
       # A ProxyGroup creates a Tailscale Service even with a single replica.
       replicas: 1
       tags:

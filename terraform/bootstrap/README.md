@@ -19,7 +19,7 @@ dependency order:
 | [`main.tf`](main.tf) | Remote state, providers, write-only Bitwarden auth Secret, releases and dependency order |
 | [`variables.tf`](variables.tf) | Bucket, tailnet, Bitwarden endpoint and secret-UUID inputs |
 | [`outputs.tf`](outputs.tf) | Private Argo CD URL |
-| [`values/argocd.yaml`](values/argocd.yaml) | Argo CD settings, `argocd-ingress` ProxyGroup and Tailscale Ingress |
+| [`values/argocd.yaml`](values/argocd.yaml) | Argo CD settings, ingress ProxyClass/ProxyGroup and Tailscale Ingress |
 | [`charts/tailscale-credentials/`](charts/tailscale-credentials/) | Maps only the operator OAuth secrets to `tailscale/operator-oauth` |
 
 Terraform owns the `tailscale` namespace and `tailscale/bitwarden-auth` Secret.
@@ -39,3 +39,11 @@ Argo CD uses Tailscale Service `svc:argocd` at
 terminates on the proxy. The root guide includes the required tailnet policy,
 separate operator OAuth client and Bitwarden accounts. A successful Helm release
 alone does not verify that private access is working.
+
+The ingress ProxyClass sets `TS_DEBUG_DISABLE_UDP_GSO=true`. On this deployment,
+small requests worked but the JavaScript bundle took about 29 seconds to download;
+disabling UDP segmentation offload reduced that to under one second. This matches
+[Tailscale issue #20858](https://github.com/tailscale/tailscale/issues/20858).
+Keep this override scoped to the ingress proxy and revisit it when upstream
+addresses the offload issue. The root guide also documents the proxy-device grant
+needed to work around missing Service-host routes.

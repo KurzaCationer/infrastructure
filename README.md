@@ -49,6 +49,8 @@ controller handles its ingress; no Cilium Gateway, NodePort, external load
 balancer, or Funnel is configured. HTTPS terminates on the Tailscale proxy and
 uses HTTP to the internal Argo CD service. Argo CD authentication remains enabled.
 The one-replica ProxyGroup matches this single-node cluster; it provides no HA.
+Its ProxyClass disables UDP segmentation offload to avoid stalled large downloads
+on the deployed Cilium network path.
 
 | Path | Responsibility |
 | --- | --- |
@@ -187,12 +189,19 @@ all of these releases and their ingress resources.
      "grants": [
        {
          "src": ["you@example.com"],
-         "dst": ["svc:argocd"],
+         "dst": ["svc:argocd", "tag:kurza-k8s-proxy"],
          "ip": ["tcp:443"]
        }
      ]
    }
    ```
+
+   The proxy-device destination is a workaround for
+   [Tailscale Service route publication issue #19666](https://github.com/tailscale/tailscale/issues/19666).
+   In this deployment, granting access only to the Service made it discoverable
+   but left its host absent from the client's route map. Allowing the same user
+   TCP 443 to the ingress proxy restored connectivity. The tag covers proxy
+   devices; use a dedicated proxy tag if future proxies need different access.
 
 3. Create a **separate OAuth client** tagged `tag:kurza-k8s-operator` with write
    permissions for **General / Services**, **Devices / Core**, and
