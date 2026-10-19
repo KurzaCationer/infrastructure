@@ -88,6 +88,7 @@ jobs:
         if: inputs.layer == 'cluster'
         uses: tailscale/github-action@v4
         with:
+          version: '1.104.1'
           oauth-client-id: ${{ vars.TS_CLIENT_ID }}
           audience: ${{ vars.TS_AUDIENCE }}
           tags: tag:ci
