@@ -26,7 +26,7 @@ variable "tailscale_magicdns_domain" {
 variable "cluster_name" {
   description = "Name of the Kubernetes cluster."
   type        = string
-  default     = "kurza"
+  default     = "kurza-infrastructure"
 }
 
 variable "location" {
@@ -38,5 +38,5 @@ variable "location" {
 variable "server_type" {
   description = "Hetzner server type for the control-plane and workload node: cax types use ARM, other types use x86."
   type        = string
-  default     = "cx23"
+  default     = "cax21"
 }
