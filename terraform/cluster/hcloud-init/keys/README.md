@@ -1,7 +1,7 @@
 # Packer trust anchors
 
-For repository setup and image builds, start with the
-[root README](../../../../README.md#setup). This file covers signing-key maintenance.
+Signing-key maintenance for the Packer bundle. Deployment prerequisites are
+documented in [setup](../../../../docs/setup.md).
 
 These public keys are vendored so image builds do not silently trust a key
 fetched during the build. They were refreshed and verified on 2026-08-08.

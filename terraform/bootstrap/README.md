@@ -1,10 +1,9 @@
 # Platform bootstrap
 
-Use the [root README](../../README.md) for the complete
-[setup sequence](../../README.md#setup),
-[verification and first login](../../README.md#verify-and-access-the-deployment),
-[credential rotation](../../README.md#security-and-ownership) and
-[local Terraform runs](../../README.md#local-terraform-runs).
+Documentation: [setup](../../docs/setup.md),
+[Argo CD login](../../docs/access.md#verify-bootstrap-and-sign-in),
+[credential rotation](../../docs/security.md#credential-rotation) and
+[local Terraform runs](../../docs/development.md#bootstrap).
 
 This layer reads the cluster kubeconfig from S3 and installs Helm releases in
 dependency order:
@@ -30,9 +29,8 @@ including destroy runs. Helm never receives the token or Tailscale credentials.
 Increment `bitwarden_operator_access_token_revision` when rotating the token;
 CI reads that revision from `BWS_OPERATOR_ACCESS_TOKEN_REVISION` (default `1`).
 
-Terraform owns these releases and their resources. Future GitOps manifests
-belong under the root `argocd/` path; there are none committed yet. Avoid assigning
-the same resources to Argo CD without an explicit ownership migration.
+Terraform owns the bootstrap releases and their resources. GitOps manifests live
+in `argocd/`. Moving bootstrap resources to Argo CD requires an ownership migration.
 
 Argo CD's pre-delete Job removes its Ingress, ProxyGroup and ProxyClass in that
 order and waits for their finalizers while the Tailscale operator is still
@@ -46,14 +44,14 @@ release.
 
 Argo CD uses Tailscale Service `svc:argocd` at
 `https://argocd.<your-tailnet>.ts.net`. Its Service remains `ClusterIP`; HTTPS
-terminates on the proxy. The root guide includes the required tailnet policy,
-separate operator OAuth client and Bitwarden accounts. A successful Helm release
-alone does not verify that private access is working.
+terminates on the proxy. The required tailnet policy, operator OAuth client and
+Bitwarden accounts are documented in [setup](../../docs/setup.md#3-configure-the-operators-and-private-argo-cd-access).
+Private access needs verification after Helm completes.
 
 The ingress ProxyClass sets `TS_DEBUG_DISABLE_UDP_GSO=true`. On this deployment,
 small requests worked but the JavaScript bundle took about 29 seconds to download;
 disabling UDP segmentation offload reduced that to under one second. This matches
 [Tailscale issue #20858](https://github.com/tailscale/tailscale/issues/20858).
-Keep this override scoped to the ingress proxy and revisit it when upstream
-addresses the offload issue. The root guide also documents the proxy-device grant
-needed to work around missing Service-host routes.
+The override is scoped to the ingress proxy pending an upstream fix. The
+[proxy-device grant](../../docs/setup.md#3-configure-the-operators-and-private-argo-cd-access)
+works around missing Service-host routes.

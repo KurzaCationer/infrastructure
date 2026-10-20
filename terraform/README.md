@@ -1,8 +1,7 @@
 # Terraform layers
 
-The [root README](../README.md) is the central guide for architecture,
-[setup](../README.md#setup), GitHub settings, deployment, verification, local runs
-and destruction. Start there before running either layer.
+Documentation: [setup](../docs/setup.md), [access](../docs/access.md),
+[local Terraform runs](../docs/development.md) and [operations](../docs/operations.md).
 
 | Layer | Responsibility | S3 state key |
 | --- | --- | --- |
@@ -17,7 +16,7 @@ Image snapshots are built separately using
 [`cluster/hcloud-init/`](cluster/hcloud-init/README.md). Terraform selects a
 matching snapshot; it does not run Packer.
 
-For supported inputs and defaults, see [`cluster/variables.tf`](cluster/variables.tf)
+Inputs and defaults: [`cluster/variables.tf`](cluster/variables.tf)
 and [`bootstrap/variables.tf`](bootstrap/variables.tf). Provider constraints and
 state backend definitions live in each layer's `versions.tf`; pinned Helm chart
 and module versions live in each layer's `main.tf`.
