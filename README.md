@@ -6,7 +6,7 @@ access; Bitwarden Secrets Manager supplies credentials.
 
 ## Stack
 
-- **Cluster:** one schedulable `cx23` control-plane node in `nbg1`, with Cilium
+- **Cluster:** one schedulable `cax21` control-plane node in `nbg1`, with Cilium
   networking and Gateway API. No worker nodes.
 - **Private platform:** Bitwarden and Tailscale operators, plus Argo CD at
   `https://argocd.<your-tailnet>.ts.net`.
