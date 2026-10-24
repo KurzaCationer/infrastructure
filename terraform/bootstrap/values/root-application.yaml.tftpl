@@ -20,6 +20,26 @@ spec:
       patches:
         - target:
             kind: Application
+            name: pocket-id
+          patch: |
+            - op: add
+              path: /spec/source/kustomize
+              value:
+                patches:
+                  - target:
+                      kind: BitwardenSecret
+                    patch: |
+                      - op: replace
+                        path: /spec/organizationId
+                        value: ${organization_id}
+                      - op: replace
+                        path: /spec/map/0/bwSecretId
+                        value: ${pocket_id_encryption_key_secret_id}
+                      - op: replace
+                        path: /spec/map/1/bwSecretId
+                        value: ${pocket_id_api_key_secret_id}
+        - target:
+            kind: Application
             name: public-ingress
           patch: |
             - op: add

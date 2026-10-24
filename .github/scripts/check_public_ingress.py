@@ -35,11 +35,13 @@ def build(path, patches=None):
 
 seed = (root / "terraform/bootstrap/values/root-application.yaml.tftpl").read_text()
 seed = yaml.safe_load(seed.replace("${organization_id}", "00000000-0000-0000-0000-000000000001")
+                      .replace("${pocket_id_encryption_key_secret_id}", "00000000-0000-0000-0000-000000000004")
+                      .replace("${pocket_id_api_key_secret_id}", "00000000-0000-0000-0000-000000000005")
                       .replace("${public_ipv4}", "192.0.2.10"))
 require(seed["spec"]["source"]["path"] == "argocd", "Root must watch argocd/")
 apps = build(root / "argocd", seed["spec"]["source"]["kustomize"]["patches"])
 require({app["metadata"]["name"] for app in apps} == {
-    "public-ingress", "external-dns", "https-test", "cloudnative-pg", "quad-assignment",
+    "public-ingress", "external-dns", "https-test", "cloudnative-pg", "quad-assignment", "pocket-id",
 }, "Unexpected child apps, or duplicate cert-manager installation")
 quad = next(app for app in apps if app["metadata"]["name"] == "quad-assignment")
 require(quad["spec"]["source"] == {
@@ -68,15 +70,38 @@ for app in apps:
         objects += build(root / source["path"], source.get("kustomize", {}).get("patches"))
 
 mappings = [obj for obj in objects if obj["kind"] == "BitwardenSecret"]
-require({obj["metadata"]["namespace"] for obj in mappings} == {"cert-manager", "external-dns"},
-        "Cloudflare credentials must be namespace-local")
+require({obj["metadata"]["namespace"] for obj in mappings} == {"cert-manager", "external-dns", "pocket-id"},
+        "Cloudflare and Pocket ID credentials must be namespace-local")
 for obj in mappings:
     require(obj["spec"]["organizationId"] == "00000000-0000-0000-0000-000000000001",
             "Root did not propagate the organization UUID")
-    require(obj["spec"]["onlyMappedSecrets"] is True, "BWS must sync only the Cloudflare token")
+    require(obj["spec"]["onlyMappedSecrets"] is True, "BWS must sync only explicitly mapped secrets")
     require(obj["spec"]["authToken"] == {"secretName": "bitwarden-auth", "secretKey": "token"},
             "BWS must reuse the existing operator credentials")
 certs = [obj for obj in objects if obj["kind"] == "Certificate"]
+pocket_app = next(app for app in apps if app["metadata"]["name"] == "pocket-id")
+require(pocket_app["spec"]["syncPolicy"]["automated"]["prune"] is False
+        and not pocket_app["metadata"].get("finalizers"),
+        "Pocket ID removal must not cascade to its persistent data")
+pocket_mapping = next(obj for obj in mappings if obj["metadata"]["namespace"] == "pocket-id")
+require(pocket_mapping["spec"]["map"] == [
+    {"bwSecretId": "00000000-0000-0000-0000-000000000004", "secretKeyName": "encryption-key"},
+    {"bwSecretId": "00000000-0000-0000-0000-000000000005", "secretKeyName": "api-key"},
+], "Root must propagate both generated Pocket ID secret UUIDs")
+pocket_pvc = next(obj for obj in objects if obj["kind"] == "PersistentVolumeClaim")
+require(pocket_pvc["spec"]["storageClassName"] == "hcloud-volumes"
+        and pocket_pvc["metadata"]["annotations"]["argocd.argoproj.io/sync-options"] == "Prune=false,Delete=false",
+        "Pocket ID must use persistent block storage protected from GitOps deletion")
+pocket_deployment = next(obj for obj in objects if obj["kind"] == "Deployment"
+                         and obj["metadata"]["name"] == "pocket-id")
+require(pocket_deployment["spec"]["replicas"] == 1
+        and pocket_deployment["spec"]["strategy"]["type"] == "Recreate",
+        "SQLite must have a single writer during updates")
+pocket_route = next(obj for obj in objects if obj["kind"] == "HTTPRoute"
+                   and obj["metadata"]["name"] == "pocket-id")
+require(pocket_route["spec"]["hostnames"] == ["auth.kurza.nl"]
+        and pocket_route["spec"]["parentRefs"][0]["sectionName"] == "kurza-nl-https",
+        "Pocket ID must use its canonical HTTPS hostname")
 require({name for cert in certs for name in cert["spec"]["dnsNames"]} == {
     "*.dylannas.nl", "*.kurza.nl",
 }, "Incorrect wildcard coverage")

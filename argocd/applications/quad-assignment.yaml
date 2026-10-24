@@ -3,7 +3,6 @@ kind: Application
 metadata:
   name: quad-assignment
   namespace: argocd
-  # No cascading-deletion finalizer: removing this Application must not delete its database.
 spec:
   project: default
   destination:
@@ -11,7 +10,6 @@ spec:
     namespace: quad-assignment
   syncPolicy:
     automated:
-      # Database and namespace removal require a deliberate manual action.
       prune: false
       selfHeal: true
     syncOptions:

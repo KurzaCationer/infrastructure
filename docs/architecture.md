@@ -2,7 +2,7 @@
 
 [Home](../README.md) · [Setup](setup.md) · [Access](access.md) · [Architecture](architecture.md) · [Operations](operations.md) · [Development](development.md) · [Security](security.md)
 
-The layers run in order: **cluster -> bootstrap**. Both use the existing S3 bucket
+The layers run in order: **cluster -> bootstrap -> identity**. All use the existing S3 bucket
 with separate state keys and native S3 locking. CI uses Terraform 1.16.6.
 
 - `cluster`: Kube-Hetzner 3.2.1 with one schedulable `cx23` control-plane node in
@@ -49,6 +49,7 @@ on the deployed Cilium network path.
 | [`terraform/bootstrap/`](../terraform/bootstrap/) | Bitwarden and Tailscale operators, OAuth secret mapping and Argo CD; state key `bootstrap/terraform.tfstate` |
 | [`terraform/bootstrap/values/argocd.yaml`](../terraform/bootstrap/values/argocd.yaml) | Terraform-owned Argo CD settings, ingress ProxyGroup and private Ingress |
 | `argocd/` | Argo CD Application, AppProject, public platform chart and controller values |
+| [`terraform/identity/`](../terraform/identity/) | Pocket ID client/group and Argo CD OIDC configuration; state key `identity/terraform.tfstate` |
 | [`scripts/`](../scripts/) | Local cluster checks and admin kubeconfig retrieval for Bash and Windows |
 | [`.github/workflows/`](../.github/workflows/) | Validation, manual image builds, apply and destroy workflows |
 | [`.github/scripts/`](../.github/scripts/) | Enrollment-key lifecycle, Argo CD manifest checks and helper tests |

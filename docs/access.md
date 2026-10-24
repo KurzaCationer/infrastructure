@@ -111,7 +111,8 @@ kubectl -n argocd delete secret argocd-initial-admin-secret
 ```
 
 The CLI requires `--grpc-web` through the HTTPS proxy. Initial password retrieval
-belongs in a local session, outside CI logs. Dex is disabled pending SSO configuration.
+belongs in a local session, outside CI logs. Dex is disabled; the identity layer
+configures direct [Pocket ID SSO](pocket-id.md). Local admin login remains enabled.
 
 Argo CD should be reachable by an allowed tailnet identity and unreachable
 outside the tailnet. `svc:argocd` and its approved host appear on the Tailscale

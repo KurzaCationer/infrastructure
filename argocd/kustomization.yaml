@@ -6,3 +6,4 @@ resources:
   - applications/external-dns.yaml
   - applications/https-test.yaml
   - applications/quad-assignment.yaml
+  - applications/pocket-id.yaml

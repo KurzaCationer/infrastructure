@@ -15,7 +15,7 @@ access; Bitwarden Secrets Manager supplies credentials.
 - **Public traffic:** Cloudflare proxies HTTPS to Cilium; the origin firewall
   accepts public web traffic only from Cloudflare ranges.
 
-Terraform applies **cluster → bootstrap**, then Argo CD reconciles the
+Terraform applies **cluster → bootstrap → identity**; Argo CD reconciles the
 applications in [`argocd/`](argocd/). Terraform retains ownership of the bootstrap
 releases. SSH and the Kubernetes API are accessible over Tailscale.
 
@@ -39,6 +39,7 @@ reconciles its applications automatically from `main`.
 | [Operations](docs/operations.md) | Applications, public ingress, maintenance and teardown |
 | [Local development](docs/development.md) | Local Terraform runs and validation |
 | [Security and credentials](docs/security.md) | Secret storage, credential rotation and enrollment keys |
+| [Pocket ID](docs/pocket-id.md) | Shared identity provider and private Argo CD SSO |
 
 ## Layout
 

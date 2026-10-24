@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pocket-id
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pocket-id
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+    - ServerSideApply=true
+    - SkipDryRunOnMissingResource=true
+  source:
+    repoURL: https://github.com/KurzaCationer/infrastructure.git
+    targetRevision: main
+    path: argocd/workloads/pocket-id

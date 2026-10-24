@@ -17,6 +17,13 @@ chart mounts this Secret. Terraform and Helm receive UUIDs and Secret names
 only; the credential values stay in Bitwarden and Kubernetes. Cluster admin
 access and backups therefore include access to these credentials.
 
+Bootstrap also initializes `pocket-id/bitwarden-auth` with the same write-only
+operator token and rotation revision. The bootstrap and identity layers use
+`BWS_ACCESS_TOKEN` with read/write access to the identity project to generate
+Pocket ID keys and Argo CD's OIDC client secret. Those generated values enter
+Terraform state. See [Pocket ID](pocket-id.md) and the separate
+[encryption-key instructions](pocket-id-encryption-key.md).
+
 ## Credential rotation
 
 - **Tailscale OAuth:** update Bitwarden, wait for synchronization, then run

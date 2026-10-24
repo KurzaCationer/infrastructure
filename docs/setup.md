@@ -22,10 +22,11 @@ use Linux/WSL/macOS with Bash, Packer **1.16.0**, `curl`, `unzip` and `sha256sum
 2. Configure GitHub OIDC trust for the default branch on the existing role:
    `arn:aws:iam::154009488279:role/kurza-infrastructure-github-actions-role`.
    Trust audience `sts.amazonaws.com` and the repository's actual OIDC subject.
-3. Give the role `s3:ListBucket` on the bucket for `cluster/*` and `bootstrap/*`,
+3. Give the role `s3:ListBucket` on the bucket for `cluster/*`, `bootstrap/*` and `identity/*`,
    `s3:GetObject`/`s3:PutObject` on each layer's `terraform.tfstate` object, and
    `s3:GetObject`/`s3:PutObject`/`s3:DeleteObject` on each lock object, for example
-   `cluster/terraform.tfstate.tflock` and `bootstrap/terraform.tfstate.tflock`.
+   `cluster/terraform.tfstate.tflock`, `bootstrap/terraform.tfstate.tflock` and
+   `identity/terraform.tfstate.tflock`.
    A customer-managed KMS key also needs appropriate key permissions.
 4. Store a Hetzner project Read & Write API token, SSH public key, and matching
    unencrypted SSH private key in Bitwarden Secrets Manager.
@@ -130,6 +131,7 @@ In Settings > Secrets and variables > Actions, configure:
 | Variable | `AWS_IAM_ROLE` | AWS role ARN assumed through GitHub OIDC |
 | Secret | `BWS_ACCESS_TOKEN` | Bitwarden machine-account access token |
 | Variable | `BWS_ORGANIZATION_ID` | Bitwarden organization UUID |
+| Variable | `BWS_IDENTITY_PROJECT_ID` | Existing Bitwarden project UUID for automatically generated Pocket ID and Argo CD secrets |
 | Variable | `BWS_SECRET_IDS` | JSON object shown below, containing secret UUIDs |
 | Variable | `TS_MAGICDNS_DOMAIN` | Tailnet domain, for example `example-tailnet.ts.net` |
 | Variable | `TS_CLIENT_ID` | Tailscale federated identity client ID for the cluster workflow |
@@ -154,7 +156,9 @@ For Bitwarden EU, set the two endpoint variables to `https://api.bitwarden.eu`
 and `https://identity.bitwarden.eu`, respectively.
 
 Repository settings use `BWS_` names; CI maps them to the provider's `BW_`
-environment variables. Bootstrap uses a separate, write-only operator token.
+environment variables. Give `BWS_ACCESS_TOKEN` read/write access to the identity
+project and `BWS_OPERATOR_ACCESS_TOKEN` read access. Bootstrap uses the separate,
+write-only operator token for in-cluster synchronization.
 Cluster credentials and the admin kubeconfig enter state and saved plans;
 access is covered under [security and credential rotation](security.md).
 
@@ -178,13 +182,15 @@ bundle maintenance are in the [image-build reference](../terraform/cluster/hclou
 ## 6. Deploy
 
 In Actions, choose **Terraform Apply > Run workflow** on the default branch to
-plan and apply cluster, then bootstrap. Both jobs join the tailnet. Bootstrap
+plan and apply cluster, then bootstrap, then identity. All jobs join the tailnet. Bootstrap
 creates its Bitwarden auth Secret through Terraform's write-only `data_wo`
 argument before installing the credential mapping and Tailscale operator.
 After deployment: [cluster checks and Argo CD login](access.md).
 Public applications also require [Cloudflare ingress configuration](operations.md#application-ingress).
+Complete [Pocket ID administrator enrollment](pocket-id.md#enroll-your-administrator)
+on first deployment. Credentials and the Argo CD client are provisioned automatically.
 
-Pull requests matching the workflow path filters validate both layers without
+Pull requests matching the workflow path filters validate all three layers without
 cloud credentials. Validation downloads modules, providers and the Argo CD chart.
 Pushes do not deploy. Manual runs on other branches only validate. Deployments
 are serialized and active applies are not cancelled. Snapshot builds use a

@@ -45,6 +45,9 @@ terraform -chdir=terraform/bootstrap init -reconfigure -backend-config="bucket=Y
 Stay connected to the tailnet and provide
 `TF_VAR_state_bucket`, `TF_VAR_aws_region`, `TF_VAR_tailscale_magicdns_domain`,
 `TF_VAR_bitwarden_organization_id`, and `TF_VAR_tailscale_operator_secret_ids`.
+Also provide `TF_VAR_bitwarden_identity_project_id` and the existing Bitwarden
+provider credentials (`BW_ACCESS_TOKEN`, `BW_ORGANIZATION_ID`) with read/write
+access to that project so bootstrap can generate Pocket ID's keys.
 Set `TF_VAR_bitwarden_api_url` / `TF_VAR_bitwarden_identity_url` for EU or self-hosted
 Bitwarden. AWS credentials must also be able to read `cluster/terraform.tfstate`.
 Supply the BWS operator token through
@@ -65,6 +68,9 @@ EU/self-hosted deployments. The token is supplied through the environment.
 
 ## Validation
 
+The [identity layer](../terraform/identity/README.md) runs after bootstrap and
+Pocket ID readiness. It registers Argo CD automatically; see [Pocket ID](pocket-id.md).
+
 Validation runs without cloud credentials:
 
 ```sh
@@ -73,6 +79,9 @@ terraform -chdir=terraform/cluster init -backend=false
 terraform -chdir=terraform/cluster validate
 terraform -chdir=terraform/bootstrap init -backend=false
 terraform -chdir=terraform/bootstrap validate
+terraform -chdir=terraform/identity init -backend=false
+terraform -chdir=terraform/identity validate
+terraform -chdir=terraform/identity test
 ```
 
 CI also runs these helper tests with mocked commands/network responses:

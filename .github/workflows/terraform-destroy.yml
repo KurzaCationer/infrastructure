@@ -30,8 +30,20 @@ jobs:
             exit 1
           fi
 
-  bootstrap:
+  identity:
     needs: confirm
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/terraform-layer.yml
+    with:
+      layer: identity
+      operation: destroy
+    secrets:
+      BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+
+  bootstrap:
+    needs: identity
     permissions:
       contents: read
       id-token: write
@@ -40,6 +52,7 @@ jobs:
       layer: bootstrap
       operation: destroy
     secrets:
+      BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
       BWS_OPERATOR_ACCESS_TOKEN: ${{ secrets.BWS_OPERATOR_ACCESS_TOKEN }}
 
   cluster:

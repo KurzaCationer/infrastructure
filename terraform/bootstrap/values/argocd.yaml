@@ -29,6 +29,9 @@ configs:
       return {status = "Progressing", message = "Waiting for Bitwarden secret synchronization"}
   rbac:
     policy.default: ""
+    scopes: '[groups]'
+    policy.csv: |
+      g, argocd-admins, role:admin
 
 server:
   replicas: 1

@@ -63,6 +63,16 @@ require(any(obj["kind"] == "Service" and obj["metadata"]["name"] == backend["nam
 params = next(obj for obj in objects if obj["kind"] == "ConfigMap"
               and obj["metadata"]["name"] == "argocd-cmd-params-cm")
 require(params["data"]["server.insecure"] == "true", "Backend must accept proxy HTTP")
+config = next(obj for obj in objects if obj["kind"] == "ConfigMap"
+              and obj["metadata"]["name"] == "argocd-cm")
+require("oidc.config" not in config["data"],
+        "Helm must leave oidc.config to the identity Terraform layer")
+require(config["data"]["admin.enabled"] == "true", "Keep local administrator recovery enabled")
+rbac = next(obj for obj in objects if obj["kind"] == "ConfigMap"
+            and obj["metadata"]["name"] == "argocd-rbac-cm")
+require(rbac["data"].get("policy.default", "") == ""
+        and "g, argocd-admins, role:admin" in rbac["data"]["policy.csv"],
+        "Only the explicit Pocket ID administrator group should gain SSO permissions")
 
 # A failed cleanup must block Helm before Terraform can uninstall the operator.
 cleanup = next(obj for obj in objects if obj["kind"] == "Job"

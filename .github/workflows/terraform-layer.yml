@@ -53,6 +53,7 @@ jobs:
       TF_VAR_tailscale_operator_secret_ids: ${{ vars.BWS_OPERATOR_SECRET_IDS }}
       TF_VAR_bitwarden_operator_access_token: ${{ secrets.BWS_OPERATOR_ACCESS_TOKEN }}
       TF_VAR_bitwarden_operator_access_token_revision: ${{ vars.BWS_OPERATOR_ACCESS_TOKEN_REVISION || '1' }}
+      TF_VAR_bitwarden_identity_project_id: ${{ vars.BWS_IDENTITY_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,7 +72,7 @@ jobs:
           TS_NODE_AUDIENCE: ${{ vars.TS_NODE_AUDIENCE }}
         run: |
           case "$LAYER" in
-            cluster|bootstrap) ;;
+            cluster|bootstrap|identity) ;;
             *) echo 'Unsupported Terraform layer.' >&2; exit 1 ;;
           esac
           case "$OPERATION" in
@@ -89,10 +90,15 @@ jobs:
             : "${TF_VAR_bitwarden_secret_ids:?Set the BWS_SECRET_IDS repository variable.}"
             : "${TS_NODE_CLIENT_ID:?Set the TS_NODE_CLIENT_ID repository variable.}"
             : "${TS_NODE_AUDIENCE:?Set the TS_NODE_AUDIENCE repository variable.}"
-          else
+          elif [[ "$LAYER" == 'bootstrap' ]]; then
+            : "${BW_ACCESS_TOKEN:?Set the BWS_ACCESS_TOKEN repository secret.}"
+            : "${TF_VAR_bitwarden_identity_project_id:?Set the BWS_IDENTITY_PROJECT_ID repository variable.}"
             : "${TF_VAR_bitwarden_organization_id:?Set the BWS_ORGANIZATION_ID repository variable.}"
             : "${TF_VAR_tailscale_operator_secret_ids:?Set the BWS_OPERATOR_SECRET_IDS repository variable.}"
             : "${TF_VAR_bitwarden_operator_access_token:?Set the BWS_OPERATOR_ACCESS_TOKEN repository secret.}"
+          else
+            : "${BW_ACCESS_TOKEN:?Set the BWS_ACCESS_TOKEN repository secret.}"
+            : "${BW_ORGANIZATION_ID:?Set the BWS_ORGANIZATION_ID repository variable.}"
           fi
       - name: Authenticate to AWS with OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
@@ -110,6 +116,18 @@ jobs:
       - name: Initialize S3 backend
         run: terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$AWS_REGION"
       - run: terraform validate -no-color
+      - name: Wait for Pocket ID before configuring its API
+        if: inputs.layer == 'identity' && inputs.operation == 'apply'
+        run: |
+          terraform -chdir=../cluster init -input=false -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$AWS_REGION"
+          umask 077
+          identity_kubeconfig=$(mktemp)
+          trap 'rm -f "$identity_kubeconfig"' EXIT
+          terraform -chdir=../cluster output -raw kubeconfig > "$identity_kubeconfig"
+          export KUBECONFIG="$identity_kubeconfig"
+          kubectl -n pocket-id wait --for=create deployment/pocket-id --timeout=300s --request-timeout=30s
+          kubectl -n pocket-id rollout status deployment/pocket-id --timeout=300s --request-timeout=30s
+          curl --fail --silent --show-error --output /dev/null --connect-timeout 10 --max-time 20 --retry 20 --retry-delay 10 --retry-all-errors https://auth.kurza.nl/.well-known/openid-configuration
       - name: Create short-lived node enrollment key using federation
         id: enrollment
         if: inputs.layer == 'cluster'

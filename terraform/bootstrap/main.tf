@@ -137,8 +137,10 @@ resource "helm_release" "argocd" {
         yamldecode(file("${path.module}/values/argocd.yaml")).extraObjects,
         [
           yamldecode(templatefile("${path.module}/values/root-application.yaml.tftpl", {
-            organization_id = var.bitwarden_organization_id
-            public_ipv4     = data.terraform_remote_state.cluster.outputs.public_ingress_ipv4
+            organization_id                    = var.bitwarden_organization_id
+            public_ipv4                        = data.terraform_remote_state.cluster.outputs.public_ingress_ipv4
+            pocket_id_encryption_key_secret_id = bitwarden-secrets_secret.pocket_id_encryption.id
+            pocket_id_api_key_secret_id        = bitwarden-secrets_secret.pocket_id_api.id
           })),
         ],
       )
@@ -154,5 +156,5 @@ resource "helm_release" "argocd" {
   # has installed its CRDs; Terraform need not discover those CRDs during plan.
   # The Argo CD pre-delete hook waits for Ingress, ProxyGroup and ProxyClass
   # cleanup before this dependency allows the operator to be uninstalled.
-  depends_on = [helm_release.tailscale_operator, kubernetes_secret_v1.public_bitwarden_auth]
+  depends_on = [helm_release.tailscale_operator, kubernetes_secret_v1.public_bitwarden_auth, kubernetes_secret_v1.identity_bitwarden_auth]
 }

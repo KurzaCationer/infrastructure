@@ -1,0 +1,164 @@
+# Terraform creates the namespace and bitwarden-auth before Argo CD starts.
+apiVersion: k8s.bitwarden.com/v1
+kind: BitwardenSecret
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  organizationId: set-by-bootstrap
+  secretName: pocket-id
+  onlyMappedSecrets: true
+  map:
+  - bwSecretId: set-by-bootstrap
+    secretKeyName: encryption-key
+  - bwSecretId: set-by-bootstrap
+    secretKeyName: api-key
+  authToken:
+    secretName: bitwarden-auth
+    secretKey: token
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pocket-id-data
+  namespace: pocket-id
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: hcloud-volumes
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  type: ClusterIP
+  selector:
+    app: pocket-id
+  ports:
+  - name: http
+    port: 1411
+    targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: pocket-id
+  template:
+    metadata:
+      labels:
+        app: pocket-id
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: pocket-id
+        image: ghcr.io/pocket-id/pocket-id:v2.19.1-distroless
+        ports:
+        - name: http
+          containerPort: 1411
+        env:
+        - name: APP_URL
+          value: https://auth.kurza.nl
+        - name: ENCRYPTION_KEY_FILE
+          value: /run/secrets/pocket-id/encryption-key
+        - name: STATIC_API_KEY_FILE
+          value: /run/secrets/pocket-id/api-key
+        # Only Cloudflare can reach the public origin; the Gateway routes here.
+        - name: TRUSTED_PLATFORM
+          value: CF-Connecting-IP
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
+        startupProbe:
+          exec:
+            command: [/app/pocket-id, healthcheck]
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 30
+        readinessProbe:
+          exec:
+            command: [/app/pocket-id, healthcheck]
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          exec:
+            command: [/app/pocket-id, healthcheck]
+          periodSeconds: 30
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        - name: encryption-key
+          mountPath: /run/secrets/pocket-id
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: pocket-id-data
+      - name: encryption-key
+        secret:
+          secretName: pocket-id
+          defaultMode: 0440
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+  labels:
+    infrastructure.kurza.nl/public-dns: 'true'
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public
+    namespace: public-ingress
+    sectionName: kurza-nl-https
+  hostnames:
+  - auth.kurza.nl
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - group: ""
+      kind: Service
+      name: pocket-id
+      port: 1411

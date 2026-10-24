@@ -3,6 +3,16 @@ variable "state_bucket" {
   type        = string
 }
 
+variable "bitwarden_identity_project_id" {
+  description = "Existing Bitwarden project UUID for generated identity secrets. Terraform needs write access and the cluster operator needs read access."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.bitwarden_identity_project_id))
+    error_message = "Provide the Bitwarden project UUID for identity secrets."
+  }
+}
+
 variable "aws_region" {
   description = "AWS region of the existing state bucket."
   type        = string

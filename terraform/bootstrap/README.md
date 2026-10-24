@@ -48,6 +48,16 @@ terminates on the proxy. The required tailnet policy, operator OAuth client and
 Bitwarden accounts are documented in [setup](../../docs/setup.md#3-configure-the-operators-and-private-argo-cd-access).
 Private access needs verification after Helm completes.
 
+Bootstrap also generates Pocket ID's encryption and provisioning API keys in
+the project selected by `bitwarden_identity_project_id`. CI supplies its UUID
+as `BWS_IDENTITY_PROJECT_ID` and passes `BWS_ACCESS_TOKEN` for generation. Give
+that machine account read/write access and the operator account read access.
+It initializes `pocket-id/bitwarden-auth` using the existing write-only token
+pattern and seeds the key UUIDs into Argo CD. Generated values enter Terraform
+state; only UUIDs enter Helm values. The later identity layer configures Argo
+CD SSO without importing or adopting its existing namespace. See the
+[Pocket ID guide](../../docs/pocket-id.md) for the complete sequence.
+
 The ingress ProxyClass sets `TS_DEBUG_DISABLE_UDP_GSO=true`. On this deployment,
 small requests worked but the JavaScript bundle took about 29 seconds to download;
 disabling UDP segmentation offload reduced that to under one second. This matches

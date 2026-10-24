@@ -4,6 +4,10 @@
 
 Commands assume the repository root and the [cluster kubeconfig](access.md#verify-bootstrap-and-sign-in).
 
+[Pocket ID operations and first enrollment](pocket-id.md) cover the shared
+identity provider and Argo CD SSO. Its encryption-key lifecycle is documented
+separately in [Pocket ID encryption key](pocket-id-encryption-key.md).
+
 Rerun **Terraform Apply** on the default branch to deploy configuration changes.
 OS and Kubernetes upgrades are manual. Snapshot rebuilds and node replacement
 are separate operations; replacing the single node causes downtime.
@@ -95,7 +99,7 @@ and their ownership TXT records manually. Review Cloudflare IP ranges in
 ## Destroy
 
 Run **Terraform Destroy** manually on the default branch with confirmation
-input `destroy`. It destroys **bootstrap -> cluster**, stopping if either
+input `destroy`. It destroys **identity -> bootstrap -> cluster**, stopping if any
 layer fails, and shares the deployment concurrency lock so deploy and destroy
 cannot overlap. Each layer creates a saved destroy plan and applies that plan
 using the same backend, credentials, and private network access as deployment.
@@ -104,3 +108,5 @@ lifecycle, so the same node federation settings are required.
 
 Destruction removes resources managed by these Terraform states. The existing S3
 state bucket and separately built Hetzner snapshots remain.
+Bootstrap destroy is blocked by Pocket ID's protected encryption key until it
+is deliberately retired as described in the separate key guide.
