@@ -1,0 +1,26 @@
+name: Cluster script tests
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/cluster-scripts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python scripts/tests/test_cluster_scripts.py

@@ -1,31 +1,52 @@
 # Access
 
-Requires a checkout at the deployed commit, Terraform, kubectl, AWS authentication
-and a tailnet connection. Set `TF_STATE_BUCKET` and `AWS_REGION`, or authenticate
-`gh` to read them from the repository variables.
+Health checks require kubectl and a tailnet connection. Kubeconfig retrieval also
+requires Terraform, AWS authentication and a checkout at the deployed commit.
+Set `TF_STATE_BUCKET` and `AWS_REGION`, or authenticate `gh` to read them from
+the repository variables.
 
 AWS access must allow listing the state bucket, reading cluster state and
 decrypting it when a customer-managed KMS key is used. `AWS_PROFILE` is supported.
 
-From the repository root:
+## Kubeconfig
+
+Retrieve or refresh the admin kubeconfig from the repository root:
 
 ```sh
-bash scripts/check-cluster.sh
+bash scripts/get-kubeconfig.sh
 export KUBECONFIG="$HOME/.kube/kurza-infrastructure.yaml"
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\scripts\check-cluster.bat
+.\scripts\get-kubeconfig.bat
 $env:KUBECONFIG = "$env:USERPROFILE\.kube\kurza-infrastructure.yaml"
 ```
 
-Expect one Ready node and a healthy Cilium rollout. Rerun after node replacement
-to refresh the admin kubeconfig. Use absolute paths for `CLUSTER_DIR` and
+Run retrieval again after node replacement or credential changes. Failed retrieval
+preserves the existing file. Use absolute paths for `CLUSTER_DIR` and
 `KUBECONFIG_PATH` overrides.
 
-SSH uses the hostname printed by the check script and the deployment private key:
+## Health checks
+
+```sh
+bash scripts/check-cluster.sh
+```
+
+```powershell
+.\scripts\check-cluster.bat
+```
+
+Checks reuse the kubeconfig, retrieving it automatically if missing or empty.
+An existing kubeconfig requires no Terraform, AWS or GitHub access.
+
+Checks cover node readiness, Cilium, platform deployments, Argo CD application
+sync and health, certificates and the public Gateway. Run after all layers are
+deployed. A failed check exits nonzero. Override `REQUEST_TIMEOUT` (default `30s`)
+or `ROLLOUT_TIMEOUT` (default `120s`) for slower connections or rollouts.
+
+SSH uses the deployment private key and the hostname in the kubeconfig's API URL:
 
 ```sh
 ssh -i /path/to/private-key root@<hostname>

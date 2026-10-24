@@ -77,4 +77,5 @@ terraform -chdir=terraform/identity test
 python3 .github/scripts/test_tailscale_enrollment.py
 python3 .github/scripts/check_argocd.py
 python3 .github/scripts/check_public_ingress.py
+python3 scripts/tests/test_cluster_scripts.py
 ```
