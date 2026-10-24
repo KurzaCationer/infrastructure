@@ -1,29 +1,16 @@
-# Packer trust anchors
+# Packer signing keys
 
-Signing-key maintenance for the Packer bundle. Deployment prerequisites are
-documented in [setup](../../../../docs/setup.md).
+| File | Publisher URL | Primary fingerprint |
+| --- | --- | --- |
+| `opensuse-project-signing-key.asc` | https://download.opensuse.org/distribution/leap/16.0/repo/oss/repodata/repomd.xml.key | `AD485664E901B867051AB15F35A2F86E29B700A4` |
+| `rancher-ci-signing-key.asc` | https://rpm.rancher.io/public.key | `C8CFF216455126E9B9C918BE925EA29AE257814A` |
 
-These public keys are vendored so image builds do not silently trust a key
-fetched during the build. They were refreshed and verified on 2026-08-08.
+Confirm rotations through the publisher's release channel before accepting a
+changed key. Inspect downloaded keys with `gpg --show-keys --with-colons`.
 
-| File | Authoritative source | Primary fingerprint | File SHA-256 | Expiry |
-| --- | --- | --- | --- | --- |
-| `opensuse-project-signing-key.asc` | `https://download.opensuse.org/distribution/leap/16.0/repo/oss/repodata/repomd.xml.key` | `AD485664E901B867051AB15F35A2F86E29B700A4` | `b5745739ebfb95b25b8e810f9bcb847fe750ccda598bd85f02f0e974599a6d7e` | 2030-05-27 |
-| `rancher-ci-signing-key.asc` | `https://rpm.rancher.io/public.key` | `C8CFF216455126E9B9C918BE925EA29AE257814A` | `7d2415f7fc532c365c8874bfad966566daaa0d04a9a5ba14d1db6080a9c12629` | No expiry |
+Update the fingerprint pins in both Packer templates, this table and the changed
+file hashes in `../security-bundle.sha256` together.
 
-## Rotation
-
-1. Confirm the rotation through the publisher's official announcement or
-   release channel. Do not trust an unexpected key change at the download URL.
-2. Download the key from the authoritative HTTPS endpoint and inspect it with
-   `gpg --show-keys --with-colons`.
-3. Review the complete primary fingerprint, lifecycle, signing capability, and
-   file SHA-256. Update the fingerprint pins in both Packer templates, this table,
-   and all changed-file hashes in `../security-bundle.sha256` together. Keep the
-   reviewed bundle aligned with the pinned Kube-Hetzner release.
-4. From `terraform/cluster/hcloud-init`, run
-   `sha256sum --check security-bundle.sha256`, then complete a real snapshot build
-   and boot test before using the rotated bundle for a cluster. The upstream
-   `scripts/tests/test_packer_trust_anchors.sh` and
-   `scripts/tests/test_leapmicro_verifier.sh` tests are not vendored here; run them
-   in the corresponding upstream checkout when reviewing a bundle update.
+Verify the bundle, build a snapshot and complete a boot test before deployment.
+Run upstream `test_packer_trust_anchors.sh` and `test_leapmicro_verifier.sh` from
+the matching Kube-Hetzner checkout when reviewing a bundle update.

@@ -1,77 +1,69 @@
-# Local development
+# Local Terraform
 
-[Home](../README.md) · [Setup](setup.md) · [Access](access.md) · [Architecture](architecture.md) · [Operations](operations.md) · [Development](development.md) · [Security](security.md)
+Run commands from the repository root. Requires Terraform **>= 1.16.6, < 2.0**,
+AWS credentials for the state bucket and a tailnet connection.
 
-Commands run from the repository root. CI deployment is documented in [setup](setup.md).
+Apply **cluster → bootstrap → identity**. Pocket ID must be ready before identity.
 
-## Local Terraform runs
+## Inputs
+
+Set `BW_ACCESS_TOKEN` and `BW_ORGANIZATION_ID` for Bitwarden.
+For EU/self-hosted instances, also set `BW_API_URL` and `BW_IDENTITY_API_URL`.
+The account needs read access to cluster credentials and read/write access to
+the identity project.
 
 ### Cluster
 
-Local plans and applies require a tailnet connection and AWS authentication.
-Export `TF_VAR_tailscale_magicdns_domain` and a fresh `TF_VAR_tailscale_auth_key` for
-durable nodes tagged `tag:kurza-cluster`. Revoke the enrollment key afterward,
-including on failure. The federation helper requires GitHub Actions OIDC and
-runs in CI.
+Set:
 
-Export `BW_ACCESS_TOKEN`,
-`BW_ORGANIZATION_ID`, `BW_API_URL`, and `BW_IDENTITY_API_URL`, and put the secret-ID
-object in `TF_VAR_bitwarden_secret_ids` or a gitignored `terraform.tfvars` file.
-Optional Terraform variables `cluster_name`, `location`, and `server_type` default
-to `kurza`, `nbg1`, and `cx23`. Location must stay in `eu-central`. Set `server_type`
-to a `cax` type (for example, `cax11`) for ARM; other types select x86. Build the
-matching snapshot first. Changing architecture replaces the node; this single-node
-setup has no redundancy during replacement or maintenance.
+- `TF_VAR_bitwarden_secret_ids`: the `BWS_SECRET_IDS` JSON from [setup](setup.md).
+- `TF_VAR_tailscale_magicdns_domain`: the tailnet domain.
+- `TF_VAR_tailscale_auth_key`: a fresh key for durable `tag:kurza-cluster` nodes.
 
-```sh
-terraform -chdir=terraform/cluster init -reconfigure -backend-config="bucket=YOUR_BUCKET" -backend-config="region=YOUR_REGION"
-terraform -chdir=terraform/cluster plan -out=deployment.tfplan
-terraform -chdir=terraform/cluster apply deployment.tfplan
-```
-
-The module does not write kubeconfig or kustomization files during CI runs.
-
-Commit the provider lock file. State, local variable files, plans, and
-`.terraform/` directories are ignored.
+Revoke the enrollment key after the run, including failures. Use a location in
+`eu-central` and build a snapshot matching the server architecture before apply.
+Changing architecture replaces the node.
 
 ### Bootstrap
 
-After the cluster has been applied, initialize the bootstrap backend separately:
+Set:
+
+- `TF_VAR_state_bucket` and `TF_VAR_aws_region`.
+- `TF_VAR_tailscale_magicdns_domain`.
+- `TF_VAR_bitwarden_organization_id`.
+- `TF_VAR_tailscale_operator_secret_ids`: the `BWS_OPERATOR_SECRET_IDS` JSON.
+- `TF_VAR_bitwarden_identity_project_id`.
+- `TF_VAR_bitwarden_operator_access_token`.
+- `TF_VAR_bitwarden_operator_access_token_revision`: increment on token rotation.
+
+For EU/self-hosted Bitwarden, also set `TF_VAR_bitwarden_api_url` and
+`TF_VAR_bitwarden_identity_url`.
+
+Keep the operator token available during both plan and apply, including destroy.
+AWS credentials must also read cluster state.
+
+### Identity
+
+Set `TF_VAR_state_bucket` and `TF_VAR_aws_region`.
+AWS credentials must read both cluster and bootstrap state.
+
+## Commands
+
+Replace `LAYER` with `cluster`, `bootstrap` or `identity`:
 
 ```sh
-terraform -chdir=terraform/bootstrap init -reconfigure -backend-config="bucket=YOUR_BUCKET" -backend-config="region=YOUR_REGION"
+terraform -chdir=terraform/LAYER init -reconfigure -backend-config="bucket=YOUR_BUCKET" -backend-config="region=YOUR_REGION"
+terraform -chdir=terraform/LAYER plan -out=deployment.tfplan
+terraform -chdir=terraform/LAYER apply deployment.tfplan
 ```
 
-Stay connected to the tailnet and provide
-`TF_VAR_state_bucket`, `TF_VAR_aws_region`, `TF_VAR_tailscale_magicdns_domain`,
-`TF_VAR_bitwarden_organization_id`, and `TF_VAR_tailscale_operator_secret_ids`.
-Also provide `TF_VAR_bitwarden_identity_project_id` and the existing Bitwarden
-provider credentials (`BW_ACCESS_TOKEN`, `BW_ORGANIZATION_ID`) with read/write
-access to that project so bootstrap can generate Pocket ID's keys.
-Set `TF_VAR_bitwarden_api_url` / `TF_VAR_bitwarden_identity_url` for EU or self-hosted
-Bitwarden. AWS credentials must also be able to read `cluster/terraform.tfstate`.
-Supply the BWS operator token through
-`TF_VAR_bitwarden_operator_access_token`. This variable is sensitive and ephemeral;
-keep it available for both planning and applying a saved plan, including destroy
-runs. Set `TF_VAR_bitwarden_operator_access_token_revision` to a positive integer
-(default `1`) and increment it when rotating the token.
-
-Plan and apply:
-
-```sh
-terraform -chdir=terraform/bootstrap plan -out=deployment.tfplan
-terraform -chdir=terraform/bootstrap apply deployment.tfplan
-```
-
-Bootstrap's variables default to US Bitwarden endpoints; override them for
-EU/self-hosted deployments. The token is supplied through the environment.
+Commit provider lock files. Keep state, plans, credentials and local variable
+files out of Git.
 
 ## Validation
 
-The [identity layer](../terraform/identity/README.md) runs after bootstrap and
-Pocket ID readiness. It registers Argo CD automatically; see [Pocket ID](pocket-id.md).
-
-Validation runs without cloud credentials:
+Requires network access for module, provider and chart downloads.
+Manifest checks also require Helm and `PyYAML==6.0.3`.
 
 ```sh
 terraform fmt -check -recursive terraform
@@ -82,28 +74,7 @@ terraform -chdir=terraform/bootstrap validate
 terraform -chdir=terraform/identity init -backend=false
 terraform -chdir=terraform/identity validate
 terraform -chdir=terraform/identity test
-```
-
-CI also runs these helper tests with mocked commands/network responses:
-
-```sh
 python3 .github/scripts/test_tailscale_enrollment.py
-```
-
-Manifest checks require Helm and `PyYAML==6.0.3`:
-
-```sh
 python3 .github/scripts/check_argocd.py
 python3 .github/scripts/check_public_ingress.py
-```
-
-The Argo CD check renders the pinned chart and rejects public Services, host
-ports and unexpected ingress routes. Chart, module and provider downloads need
-network access.
-
-Image bundle integrity (Bash with `sha256sum`):
-
-```sh
-cd terraform/cluster/hcloud-init
-sha256sum --check security-bundle.sha256
 ```

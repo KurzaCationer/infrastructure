@@ -1,112 +1,74 @@
 # Operations
 
-[Home](../README.md) · [Setup](setup.md) · [Access](access.md) · [Architecture](architecture.md) · [Operations](operations.md) · [Development](development.md) · [Security](security.md)
+Run **Terraform Apply** on the default branch for infrastructure changes.
+Argo CD syncs application changes from `main`.
 
-Commands assume the repository root and the [cluster kubeconfig](access.md#verify-bootstrap-and-sign-in).
-
-[Pocket ID operations and first enrollment](pocket-id.md) cover the shared
-identity provider and Argo CD SSO. Its encryption-key lifecycle is documented
-separately in [Pocket ID encryption key](pocket-id-encryption-key.md).
-
-Rerun **Terraform Apply** on the default branch to deploy configuration changes.
-OS and Kubernetes upgrades are manual. Snapshot rebuilds and node replacement
-are separate operations; replacing the single node causes downtime.
-
-Argo CD automatically reconciles the public platform from the repository default
-branch. Terraform retains ownership of its existing bootstrap releases.
-
-## PostgreSQL operator
-
-Argo CD installs the [CloudNativePG operator](https://cloudnative-pg.io/charts/)
-from the official Helm repository using chart **0.29.1** (operator **1.30.1**).
-The `cloudnative-pg` child Application creates `cnpg-system`, installs the CRDs
-with server-side apply, and runs one operator replica with cluster-wide scope.
-Values: `argocd/values/cloudnative-pg.yaml`. The operator is owned by Argo CD.
-
-The root Application discovers the operator Application from `argocd/` on `main`.
-Verify with `kubectl -n argocd get application cloudnative-pg`,
-`kubectl -n cnpg-system rollout status deployment/cloudnative-pg --timeout=180s`
-and `kubectl get crd clusters.postgresql.cnpg.io`.
-
-Databases use separate CloudNativePG `Cluster` resources with their own storage,
-credentials and backup settings. The operator must be healthy before the first
-database sync.
-Removing the operator Application cascades to its chart resources, including
-CRDs; deleting those CRDs also deletes their custom resources. Database clusters must be
-retired before operator removal.
-
-## Quad assignment
-
-The `quad-assignment` child Application watches
-`deploy/overlays/production` on `main` in
-[`KurzaCationer/quad-assignment`](https://github.com/KurzaCationer/quad-assignment).
-That repository owns the frontend/backend Deployments, database, labelled
-Namespace and HTTPRoute for `quad.dylannas.nl`. Its CI opens deployment pull
-requests; Argo CD reconciles the image references after those PRs are merged.
-
-The Application enables self-healing and server-side apply. Automatic pruning
-is disabled and the Application has no cascading-deletion finalizer to protect
-the database. Retired resources need manual removal.
-The assignment repository must provide the production overlay and namespace,
-and CloudNativePG must be healthy before the first deployment. Configure Argo CD
-read credentials if the assignment repository is private. Until the overlay is
-available on `main`, Argo CD will report a source/rendering error.
-
-Platform validation checks this Application's source and destination locally;
-the assignment repository's CI validates the external Kustomize overlay.
+OS and Kubernetes upgrades are manual. The single node has no redundancy;
+maintenance and replacement cause downtime. Rebuilding snapshots does not
+update existing nodes.
 
 ## Application ingress
 
-The Terraform-seeded root Application loads the child Applications under
-`argocd/`. They configure the existing cert-manager with Let's Encrypt DNS-01
-for `*.dylannas.nl` and `*.kurza.nl`, install ExternalDNS, and deploy
-`test.kurza.nl`. Cloudflare proxies traffic to Cilium on the existing node IP;
-public ports 80/443 accept only Cloudflare's published IPv4/IPv6 ranges.
+Cloudflare settings for `dylannas.nl` and `kurza.nl`:
 
-Cloudflare configuration:
+- API token: **Zone / DNS / Edit** and **Zone / Zone / Read**, limited to these zones.
+- Store its UUID in [cloudflare-credentials.yaml](../argocd/platform/ingress/cloudflare-credentials.yaml);
+  grant the Bitwarden operator machine account read access.
+- Enable **Full (strict)** and Universal SSL.
+- Remove conflicting DNS records. If CAA records exist, allow `letsencrypt.org`.
 
-1. Give the Cloudflare token **Zone / DNS / Edit** and **Zone / Zone / Read** for
-   only these two zones. Its Bitwarden UUID is in
-   `argocd/platform/ingress/cloudflare-credentials.yaml`. Grant the existing BWS
-   operator machine account read access. Set both Cloudflare zones to **Full
-   (strict)** with Universal SSL enabled; resolve any existing `test.kurza.nl`
-   DNS conflict and ensure CAA records, if present, permit `letsencrypt.org`.
-2. Merge and run **Terraform Apply** once to configure the firewall/Cilium and
-   root Application. Argo CD then reconciles `argocd/` automatically. If the
-   repository is private, first configure its read-only credentials in Argo CD.
-3. Terraform writes the same BWS operator token into `tailscale`, `cert-manager`
-   and `external-dns` before Argo CD starts its applications. The existing
-   operator-token revision controls rotation in all three namespaces.
+New applications must use the shared Gateway and the namespace/route opt-in
+labels in the test manifests.
 
-Deployment checks: `kubectl -n argocd get applications`, both certificates
-`Ready` in `public-ingress`, and `https://test.kurza.nl` reachable through
-Cloudflare. The following direct-origin request should fail outside the tailnet:
+With the [cluster kubeconfig](access.md):
+
+```sh
+kubectl -n argocd get applications
+kubectl -n public-ingress get certificates
+curl --fail https://test.kurza.nl
+```
+
+Certificates should be Ready. Direct-origin HTTPS should fail outside the tailnet:
 
 ```sh
 ORIGIN_IP=$(terraform -chdir=terraform/cluster output -raw public_ingress_ipv4)
 curl --connect-timeout 5 --max-time 10 --resolve "test.kurza.nl:443:$ORIGIN_IP" https://test.kurza.nl
 ```
 
-The ACME email is `mail@kurza.nl`; TLS/ACME keys stay in Kubernetes. The browser
-shows Cloudflare's edge certificate; Full (strict) validates the Let's Encrypt
-origin certificate. New applications reuse the shared Gateway and namespace/route opt-in labels
-from the test manifests. Removing the
-`https-test` Application from `argocd/kustomization.yaml` removes the example.
-ExternalDNS retains DNS records on removal (`upsert-only`); remove retired names
-and their ownership TXT records manually. Review Cloudflare IP ranges in
-`terraform/cluster/cloudflare.tf` when [Cloudflare updates them](https://www.cloudflare.com/ips/).
+Remove retired DNS names and their ownership TXT records manually; ExternalDNS
+retains them. Keep the ranges in
+[cloudflare.tf](../terraform/cluster/cloudflare.tf) current with Cloudflare's
+published IP ranges.
+
+## Databases and applications
+
+CloudNativePG must be healthy before deploying databases:
+
+```sh
+kubectl -n cnpg-system rollout status deployment/cloudnative-pg --timeout=180s
+```
+
+Retire database clusters before removing the operator Application. Its removal
+can delete CRDs and their custom resources.
+
+Deploy Quad assignment changes through its repository's
+`deploy/overlays/production` on `main`. Retired resources require manual removal.
+Configure Argo CD read credentials if that repository is private.
+
+[Pocket ID](pocket-id.md) has separate enrollment, backup and recovery requirements.
 
 ## Destroy
 
-Run **Terraform Destroy** manually on the default branch with confirmation
-input `destroy`. It destroys **identity -> bootstrap -> cluster**, stopping if any
-layer fails, and shares the deployment concurrency lock so deploy and destroy
-cannot overlap. Each layer creates a saved destroy plan and applies that plan
-using the same backend, credentials, and private network access as deployment.
-The cluster job also reuses the short-lived enrollment-key creation and revocation
-lifecycle, so the same node federation settings are required.
+Export or retire persistent application data and
+[retire the Pocket ID encryption key](pocket-id-encryption-key.md#retirement)
+before teardown.
 
-Destruction removes resources managed by these Terraform states. The existing S3
-state bucket and separately built Hetzner snapshots remain.
-Bootstrap destroy is blocked by Pocket ID's protected encryption key until it
-is deliberately retired as described in the separate key guide.
+Run **Terraform Destroy** on the default branch with confirmation input `destroy`.
+Keep deployment credentials and tailnet access available. Destruction runs
+**identity → bootstrap → cluster**; Pocket ID must remain reachable until identity
+finishes. For manual teardown, skip identity only if its state is empty.
+
+If Argo CD cleanup fails, inspect its Job logs in `argocd` before retrying.
+Keep the Tailscale operator running until its resources are removed.
+
+The S3 state bucket and separately built Hetzner snapshots remain after destroy.
