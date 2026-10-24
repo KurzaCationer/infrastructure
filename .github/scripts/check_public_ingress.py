@@ -40,6 +40,10 @@ seed = yaml.safe_load(seed.replace("${organization_id}", "00000000-0000-0000-000
                       .replace("${public_ipv4}", "192.0.2.10"))
 require(seed["spec"]["source"]["path"] == "argocd", "Root must watch argocd/")
 apps = build(root / "argocd", seed["spec"]["source"]["kustomize"]["patches"])
+unconfigured_pocket = next(app for app in build(root / "argocd")
+                           if app["metadata"]["name"] == "pocket-id")
+require(unconfigured_pocket["spec"]["syncPolicy"]["automated"]["enabled"] is False,
+        "Pocket ID must not auto-sync placeholders before bootstrap injects its UUIDs")
 require({app["metadata"]["name"] for app in apps} == {
     "public-ingress", "external-dns", "https-test", "cloudnative-pg", "quad-assignment", "pocket-id",
 }, "Unexpected child apps, or duplicate cert-manager installation")
@@ -80,6 +84,8 @@ for obj in mappings:
             "BWS must reuse the existing operator credentials")
 certs = [obj for obj in objects if obj["kind"] == "Certificate"]
 pocket_app = next(app for app in apps if app["metadata"]["name"] == "pocket-id")
+require(pocket_app["spec"]["syncPolicy"]["automated"]["enabled"] is True,
+        "Bootstrap must enable Pocket ID auto-sync together with its UUID patches")
 require(pocket_app["spec"]["syncPolicy"]["automated"]["prune"] is False
         and not pocket_app["metadata"].get("finalizers"),
         "Pocket ID removal must not cascade to its persistent data")

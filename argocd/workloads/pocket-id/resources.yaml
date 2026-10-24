@@ -162,3 +162,4 @@ spec:
       kind: Service
       name: pocket-id
       port: 1411
+      weight: 1

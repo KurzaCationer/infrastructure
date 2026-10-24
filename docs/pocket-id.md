@@ -44,7 +44,9 @@ Run **Terraform Apply** on the default branch. Deployment proceeds in order:
 
 1. `cluster` provisions the Kubernetes infrastructure.
 2. `bootstrap` generates Pocket ID's encryption and provisioning API keys in
-   Bitwarden and supplies their UUIDs to Argo CD.
+   Bitwarden and supplies their UUIDs to Argo CD. The base Pocket ID Application
+   has automatic sync disabled; bootstrap enables it with the UUID patches so
+   placeholder values cannot be deployed during initial reconciliation.
 3. Argo CD reconciles the Pocket ID Deployment, secret mapping, persistent
    volume claim and HTTPRoute. ExternalDNS publishes the hostname through
    Cloudflare; the shared Gateway terminates origin TLS.
@@ -64,6 +66,13 @@ binding, certificates, Gateway/HTTPRoute status and Cloudflare DNS, then rerun
 the workflow. Argo CD needs read access to the configured Git source revision.
 Cloudflare Full (strict) remains required; disable Rocket Loader for this host
 and avoid interactive Cloudflare challenges on OIDC endpoints.
+
+If a sync started before bootstrap supplied its patches, its running operation
+can retain the unconfigured source even after the Application spec is updated.
+An organization ID of `set-by-bootstrap` in operator logs identifies that case.
+Verify the Application's current source contains the UUID patches, terminate
+the stale operation in Argo CD, then sync the current source. Do not replace
+generated keys to resolve a stale sync.
 
 ## Enroll your administrator
 

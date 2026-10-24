@@ -38,6 +38,9 @@ spec:
                       - op: replace
                         path: /spec/map/1/bwSecretId
                         value: ${pocket_id_api_key_secret_id}
+            - op: replace
+              path: /spec/syncPolicy/automated/enabled
+              value: true
         - target:
             kind: Application
             name: public-ingress

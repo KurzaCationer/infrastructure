@@ -10,6 +10,8 @@ spec:
     namespace: pocket-id
   syncPolicy:
     automated:
+      # Bootstrap enables sync after injecting the organization and secret UUIDs.
+      enabled: false
       prune: false
       selfHeal: true
     syncOptions:
