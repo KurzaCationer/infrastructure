@@ -21,6 +21,9 @@ jobs:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Confirm destruction
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
@@ -29,6 +32,10 @@ jobs:
             echo 'Type destroy in the confirmation input to run this workflow.' >&2
             exit 1
           fi
+      - name: Block applies and begin or resume destruction
+        env:
+          GH_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
+        run: python3 .github/scripts/infrastructure_gate.py begin-destroy
 
   identity:
     needs: confirm
@@ -40,6 +47,7 @@ jobs:
       layer: identity
       operation: destroy
     secrets:
+      INFRASTRUCTURE_VARIABLE_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
       BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
 
   bootstrap:
@@ -52,6 +60,7 @@ jobs:
       layer: bootstrap
       operation: destroy
     secrets:
+      INFRASTRUCTURE_VARIABLE_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
       BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
       BWS_OPERATOR_ACCESS_TOKEN: ${{ secrets.BWS_OPERATOR_ACCESS_TOKEN }}
 
@@ -65,4 +74,17 @@ jobs:
       layer: cluster
       operation: destroy
     secrets:
+      INFRASTRUCTURE_VARIABLE_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
       BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+
+  disable:
+    needs: cluster
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Disable Terraform after all layers have been destroyed
+        env:
+          GH_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
+        run: python3 .github/scripts/infrastructure_gate.py finish-destroy

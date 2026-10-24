@@ -3,7 +3,9 @@
 Single-node k3s on Hetzner Cloud, managed with Terraform and Argo CD.
 Administration requires Tailscale. Node maintenance and replacement cause downtime.
 
-Run **Terraform Apply** manually on the default branch to deploy.
+Run **Hetzner Cloud Initialization** to enable deployment and trigger the first
+**Terraform Apply**. Subsequent pushes and merges to `main` deploy automatically
+while initialized; successful **Terraform Destroy** disables deployment again.
 Argo CD syncs application changes from `main`.
 
 - [Setup](docs/setup.md): accounts, credentials and first deployment.

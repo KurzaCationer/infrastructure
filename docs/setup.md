@@ -84,6 +84,8 @@ Configure repository Actions secrets and variables:
 | Variable | `TF_STATE_BUCKET` | Existing S3 bucket |
 | Variable | `AWS_REGION` | Bucket region |
 | Variable | `AWS_IAM_ROLE` | GitHub OIDC role ARN |
+| Secret | `INFRASTRUCTURE_VARIABLE_TOKEN` | Fine-grained PAT limited to this repository, with Variables read/write |
+| Variable | `HCLOUD_INITIALIZED` | Workflow-managed; absent or `false` until initialization succeeds |
 | Secret | `BWS_ACCESS_TOKEN` | Provisioning machine-account token |
 | Secret | `BWS_OPERATOR_ACCESS_TOKEN` | Operator machine-account token |
 | Variable | `BWS_ORGANIZATION_ID` | Organization UUID |
@@ -98,6 +100,13 @@ Configure repository Actions secrets and variables:
 | Variable | `TS_NODE_AUDIENCE` | Node federation audience |
 | Variable | `BWS_API_URL` | Optional; default `https://api.bitwarden.com` |
 | Variable | `BWS_IDENTITY_API_URL` | Optional; default `https://identity.bitwarden.com` |
+
+Create `INFRASTRUCTURE_VARIABLE_TOKEN` once using a fine-grained personal access
+token with repository **Variables: read and write** permission. The built-in
+`GITHUB_TOKEN` cannot be granted that permission. Keep the token valid (rotate it
+before expiration); initialization checks variable write access before building.
+The workflows create and update `HCLOUD_INITIALIZED` automatically. Do not set it
+to `true` manually to bypass initialization.
 
 `BWS_SECRET_IDS`:
 
@@ -127,9 +136,18 @@ Build a matching snapshot with **Hetzner Cloud Initialization** before the first
 apply. Select ARM for the current `cax21` default; non-`cax` types use x86.
 See [image builds](../terraform/cluster/hcloud-init/README.md).
 
-Run **Terraform Apply** on the default branch. Pushes do not deploy Terraform;
-runs on other branches only validate. Configure Argo CD repository read
-credentials if a Git source is private.
+Successful initialization sets `HCLOUD_INITIALIZED=true` and automatically
+triggers **Terraform Apply** on the default branch. Pushes and merges to `main`
+also deploy while this variable is `true`; manual applies use the same gate.
+Pull requests only validate and do not receive the lifecycle token.
+Configure Argo CD repository read credentials if a Git source is private.
+
+Initialization, deployment and teardown share the `terraform-deploy` concurrency
+group. Each deployment reads the variable live after acquiring that lock, and
+each Terraform layer rechecks it, including when retrying failed jobs. Missing,
+`false` or `destroying` values block deployment; API errors fail closed.
+GitHub retains only one pending run per concurrency group, so newer requests can
+replace pending ones; an active run is never cancelled by a new request.
 
 Complete [Pocket ID administrator enrollment](pocket-id.md#administrator-enrollment)
 immediately after first deployment, then verify [cluster and Argo CD access](access.md).

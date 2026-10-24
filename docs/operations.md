@@ -1,6 +1,7 @@
 # Operations
 
-Run **Terraform Apply** on the default branch for infrastructure changes.
+Push or merge to `main` for infrastructure changes. **Terraform Apply** runs
+automatically while `HCLOUD_INITIALIZED=true`; manual runs use the same gate.
 Argo CD syncs application changes from `main`.
 
 OS and Kubernetes upgrades are manual. The single node has no redundancy;
@@ -67,6 +68,15 @@ Run **Terraform Destroy** on the default branch with confirmation input `destroy
 Keep deployment credentials and tailnet access available. Destruction runs
 **identity → bootstrap → cluster**; Pocket ID must remain reachable until identity
 finishes. For manual teardown, skip identity only if its state is empty.
+
+Before teardown, the workflow sets `HCLOUD_INITIALIZED=destroying`, blocking
+applies and new initialization while allowing destroy retries. Once all three
+layers succeed, it sets the variable to `false`. Pushes and manual applies then
+remain disabled until **Hetzner Cloud Initialization** succeeds again.
+
+If teardown fails or is cancelled, leave `destroying` in place and retry
+**Terraform Destroy**. If only the final variable update fails, rerun failed jobs
+to complete it. Keep `INFRASTRUCTURE_VARIABLE_TOKEN` valid throughout teardown.
 
 If Argo CD cleanup fails, inspect its Job logs in `argocd` before retrying.
 Keep the Tailscale operator running until its resources are removed.

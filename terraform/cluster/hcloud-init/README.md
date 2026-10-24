@@ -2,6 +2,10 @@
 
 Run **Hetzner Cloud Initialization** in GitHub Actions, selecting ARM for
 `cax` nodes or x86 for other server types. The current default node requires ARM.
+After a successful build, the workflow sets `HCLOUD_INITIALIZED=true` and triggers
+Terraform deployment automatically. Configure `INFRASTRUCTURE_VARIABLE_TOKEN`
+as described in [setup](../../../docs/setup.md#github-actions-settings).
+Local Packer builds do not change the GitHub deployment gate.
 
 For local builds, install Packer **1.16.0**, Bash, `curl`, `unzip` and
 `sha256sum`, then export `HCLOUD_TOKEN`. From the repository root:

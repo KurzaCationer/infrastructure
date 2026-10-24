@@ -1,6 +1,11 @@
 name: Terraform Apply
 
 on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [Hetzner Cloud Initialization]
+    types: [completed]
   pull_request:
     paths:
       - 'terraform/**'
@@ -12,13 +17,39 @@ on:
 permissions:
   contents: read
 
-# Keep both layers of a deployment together; never cancel an active apply.
+# Serialize all three layers with initialization and destruction.
 concurrency:
-  group: terraform-${{ github.event_name == 'workflow_dispatch' && 'deploy' || github.ref }}
+  group: terraform-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
   cancel-in-progress: false
 
 jobs:
+  gate:
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == github.event.repository.default_branch &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Read through the API under the deployment lock; vars can be stale in queued runs.
+      - name: Read current initialization state
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
+        run: python3 .github/scripts/infrastructure_gate.py check-apply
+
   validate:
+    needs: gate
+    if: >-
+      always() && !cancelled() &&
+      (github.event_name == 'pull_request' || needs.gate.outputs.enabled == 'true')
     name: Validate ${{ matrix.layer }}
     runs-on: ubuntu-latest
     strategy:
@@ -48,6 +79,9 @@ jobs:
           python3 "$GITHUB_WORKSPACE/.github/scripts/check_argocd.py"
           python3 "$GITHUB_WORKSPACE/.github/scripts/check_public_ingress.py"
           terraform test -no-color
+      - name: Test infrastructure lifecycle gate without network access
+        if: matrix.layer == 'cluster'
+        run: python3 "$GITHUB_WORKSPACE/.github/scripts/test_infrastructure_gate.py"
       - name: Test enrollment-key lifecycle without network access
         if: matrix.layer == 'cluster'
         run: python3 "$GITHUB_WORKSPACE/.github/scripts/test_tailscale_enrollment.py"
@@ -56,8 +90,8 @@ jobs:
         run: terraform test -no-color
 
   cluster:
-    needs: validate
-    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [gate, validate]
+    if: needs.gate.outputs.enabled == 'true'
     permissions:
       contents: read
       id-token: write
@@ -65,6 +99,7 @@ jobs:
     with:
       layer: cluster
     secrets:
+      INFRASTRUCTURE_VARIABLE_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
       BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
 
   bootstrap:
@@ -76,6 +111,7 @@ jobs:
     with:
       layer: bootstrap
     secrets:
+      INFRASTRUCTURE_VARIABLE_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
       BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
       BWS_OPERATOR_ACCESS_TOKEN: ${{ secrets.BWS_OPERATOR_ACCESS_TOKEN }}
 
@@ -88,4 +124,5 @@ jobs:
     with:
       layer: identity
     secrets:
+      INFRASTRUCTURE_VARIABLE_TOKEN: ${{ secrets.INFRASTRUCTURE_VARIABLE_TOKEN }}
       BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
