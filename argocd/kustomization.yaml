@@ -4,6 +4,5 @@ resources:
   - applications/cloudnative-pg.yaml
   - applications/public-ingress.yaml
   - applications/external-dns.yaml
-  - applications/https-test.yaml
   - applications/quad-assignment.yaml
   - applications/pocket-id.yaml

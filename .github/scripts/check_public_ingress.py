@@ -45,8 +45,8 @@ unconfigured_pocket = next(app for app in build(root / "argocd")
 require(unconfigured_pocket["spec"]["syncPolicy"]["automated"]["enabled"] is False,
         "Pocket ID must not auto-sync placeholders before bootstrap injects its UUIDs")
 require({app["metadata"]["name"] for app in apps} == {
-    "public-ingress", "external-dns", "https-test", "cloudnative-pg", "quad-assignment", "pocket-id",
-}, "Unexpected child apps, or duplicate cert-manager installation")
+    "public-ingress", "external-dns", "cloudnative-pg", "quad-assignment", "pocket-id",
+}, "Unexpected child apps")
 quad = next(app for app in apps if app["metadata"]["name"] == "quad-assignment")
 require(quad["spec"]["source"] == {
     "repoURL": "https://github.com/KurzaCationer/quad-assignment.git",
@@ -119,9 +119,6 @@ for listener in gateway["spec"]["listeners"]:
         require(listener["port"] == 443 and listener["tls"]["mode"] == "Terminate", "Incorrect TLS listener")
         require(listener["tls"]["certificateRefs"][0]["name"] in {cert["spec"]["secretName"] for cert in certs},
                 "Gateway references a missing certificate")
-route = next(obj for obj in objects if obj["kind"] == "HTTPRoute" and obj["metadata"]["name"] == "https-test")
-require(route["spec"]["hostnames"] == ["test.kurza.nl"], "Test app must publish only its own hostname")
-require(route["spec"]["parentRefs"][0]["sectionName"] == "kurza-nl-https", "Test must use HTTPS")
 require(all(obj["spec"].get("type", "ClusterIP") == "ClusterIP" for obj in objects if obj["kind"] == "Service"),
         "Application Services must remain internal")
 

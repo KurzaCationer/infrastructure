@@ -3,6 +3,10 @@ name: Terraform Apply
 on:
   push:
     branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform*.yml'
+      - '.github/scripts/**'
   workflow_run:
     workflows: [Hetzner Cloud Initialization]
     types: [completed]
@@ -17,7 +21,6 @@ on:
 permissions:
   contents: read
 
-# Serialize all three layers with initialization and destruction.
 concurrency:
   group: terraform-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
   cancel-in-progress: false
