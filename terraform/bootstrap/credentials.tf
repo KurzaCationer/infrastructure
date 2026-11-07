@@ -4,11 +4,26 @@ resource "kubernetes_namespace_v1" "external_dns" {
   }
 }
 
+resource "kubernetes_namespace_v1" "external_dns_melanie" {
+  metadata {
+    name = "external-dns-melanie"
+  }
+}
+
 resource "kubernetes_namespace_v1" "pocket_id" {
   metadata {
     name = "pocket-id"
     labels = {
       "infrastructure.kurza.nl/public-ingress" = "true"
+    }
+  }
+}
+
+resource "kubernetes_namespace_v1" "showcase_portfolio_melanie" {
+  metadata {
+    name = "showcase-portfolio"
+    labels = {
+      "infrastructure.melanievandegraaf.nl/public-ingress" = "true"
     }
   }
 }
@@ -48,7 +63,7 @@ resource "bitwarden-secrets_secret" "pocket_id_api" {
 # cert-manager's namespace already belongs to Kube-Hetzner. Only initialize
 # operator authentication here; Argo CD owns the Cloudflare mappings and apps.
 resource "kubernetes_secret_v1" "public_bitwarden_auth" {
-  for_each = toset(["cert-manager", "external-dns"])
+  for_each = toset(["cert-manager", "external-dns", "external-dns-melanie"])
 
   metadata {
     name      = "bitwarden-auth"

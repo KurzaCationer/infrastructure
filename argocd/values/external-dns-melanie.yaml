@@ -1,0 +1,15 @@
+namespaceOverride: external-dns-melanie
+labelFilter: infrastructure.melanievandegraaf.nl/public-dns=true
+domainFilters:
+  - melanievandegraaf.nl
+txtOwnerId: tenchi-infrastructure
+env:
+  - name: CF_API_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: cloudflare-api-token
+        key: api-token-melanie
+fullnameOverride: external-dns-melanie
+rbac:
+  create: true
+  clusterRoleName: external-dns-melanie

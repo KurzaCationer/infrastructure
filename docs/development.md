@@ -62,8 +62,9 @@ files out of Git.
 
 ## Validation
 
-Requires network access for module, provider and chart downloads.
-Manifest checks also require Helm and `PyYAML==6.0.3`.
+Requires Terraform and network access for module and provider downloads.
+
+Run from the repository root:
 
 ```sh
 terraform fmt -check -recursive terraform
@@ -73,9 +74,4 @@ terraform -chdir=terraform/bootstrap init -backend=false
 terraform -chdir=terraform/bootstrap validate
 terraform -chdir=terraform/identity init -backend=false
 terraform -chdir=terraform/identity validate
-terraform -chdir=terraform/identity test
-python3 .github/scripts/test_tailscale_enrollment.py
-python3 .github/scripts/check_argocd.py
-python3 .github/scripts/check_public_ingress.py
-python3 scripts/tests/test_cluster_scripts.py
 ```
