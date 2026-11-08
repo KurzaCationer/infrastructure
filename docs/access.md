@@ -28,6 +28,36 @@ Run retrieval again after node replacement or credential changes. Failed retriev
 preserves the existing file. Use absolute paths for `CLUSTER_DIR` and
 `KUBECONFIG_PATH` overrides.
 
+## Showcase portfolio kubeconfig
+
+After retrieving the admin kubeconfig above, run locally with PowerShell (or
+`pwsh` on Linux/macOS), while connected to Tailscale:
+
+```powershell
+.\scripts\get-showcase-portfolio-kubeconfig.ps1
+kubectl --kubeconfig "$HOME/.kube/showcase-portfolio.yaml" get pods
+```
+
+The script creates `showcase-portfolio` if missing and applies a dedicated
+ServiceAccount, Role and RoleBinding in that namespace. It grants management of
+workloads, services, configuration, Secrets, ServiceAccounts, storage claims,
+ingresses, network policies and HTTP/gRPC routes, including logs, exec and port
+forwarding. It grants no RBAC administration or cluster-scoped permissions.
+Custom resources beyond those listed in the script are not included.
+
+Each run retrieves the same persistent ServiceAccount token from the cluster
+and rebuilds the local kubeconfig; the token Secret is created only if missing.
+This uses Kubernetes' [manually created ServiceAccount token Secret](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#manually-create-a-long-lived-api-token-for-a-serviceaccount)
+mechanism. The token has no automatic expiry; protect the generated file.
+Workload and Secret access permits using other ServiceAccounts in this namespace,
+so avoid placing more privileged identities there.
+
+Use `-AdminKubeconfig <path>` and `-OutputPath <path>` to override the defaults.
+The admin kubeconfig is required on every run; the generated kubeconfig cannot
+manage its own Role or RoleBinding. The script does not change your current
+kubeconfig context. It restricts the output file to the current OS user and does
+not print credentials. Generate again after replacing the cluster.
+
 ## Health checks
 
 ```sh
