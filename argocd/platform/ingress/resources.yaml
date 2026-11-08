@@ -18,6 +18,7 @@ spec:
     name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
+  - dylannas.nl
   - '*.dylannas.nl'
   privateKey:
     rotationPolicy: Always
@@ -37,6 +38,7 @@ spec:
     name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
+  - kurza.nl
   - '*.kurza.nl'
   privateKey:
     rotationPolicy: Always
@@ -56,6 +58,7 @@ spec:
     name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
+    - melanievandegraaf.nl
     - '*.melanievandegraaf.nl'
   privateKey:
     rotationPolicy: Always
@@ -142,7 +145,55 @@ spec:
         selector:
           matchLabels:
             infrastructure.kurza.nl/public-ingress: 'true'
+  - name: dylannas-nl-root-https
+    hostname: dylannas.nl
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - group: ""
+        kind: Secret
+        name: dylannas-nl-tls
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            infrastructure.kurza.nl/public-ingress: 'true'
+  - name: kurza-nl-root-https
+    hostname: kurza.nl
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - group: ""
+        kind: Secret
+        name: kurza-nl-tls
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            infrastructure.kurza.nl/public-ingress: 'true'
   - name: melanievandegraaf-nl-https
+    hostname: melanievandegraaf.nl
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+        - group: ""
+          kind: Secret
+          name: melanievandegraaf-nl-tls
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            infrastructure.melanievandegraaf.nl/public-ingress: 'true'
+  - name: melanievandegraaf-nl-wildcard-https
     hostname: '*.melanievandegraaf.nl'
     port: 443
     protocol: HTTPS
@@ -173,9 +224,12 @@ spec:
     name: public
     sectionName: http
   hostnames:
-  - '*.dylannas.nl'
-  - '*.kurza.nl'
-  - '*.melanievandegraaf.nl'
+    - dylannas.nl
+    - '*.dylannas.nl'
+    - kurza.nl
+    - '*.kurza.nl'
+    - melanievandegraaf.nl
+    - '*.melanievandegraaf.nl'
   rules:
   - matches:
     - path:
